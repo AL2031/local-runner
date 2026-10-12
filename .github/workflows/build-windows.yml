@@ -1,0 +1,78 @@
+name: Build Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  # llama.cpp build bundled into the app. All computers in a cluster must run the same one.
+  # (The "latest" release on that repo is an empty placeholder, so we pin a real build.)
+  LLAMA_TAG: b11575
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Download the llama.cpp engine (Vulkan build, works on any GPU and falls back to CPU)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download $env:LLAMA_TAG --repo ggml-org/llama.cpp --pattern "llama-*-bin-win-vulkan-x64.zip" --dir engine_dl
+          Expand-Archive (Get-ChildItem engine_dl\*.zip | Select-Object -First 1).FullName engine_tmp
+          $exe = Get-ChildItem engine_tmp -Recurse -Filter llama-server.exe | Select-Object -First 1
+          New-Item -ItemType Directory engine | Out-Null
+          Copy-Item "$($exe.Directory.FullName)\*" engine -Recurse
+          if (-not ((Test-Path engine\ggml-rpc-server.exe) -or (Test-Path engine\rpc-server.exe))) { throw "This llama.cpp build has no RPC server, so clustering would not work" }
+          Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile vc_redist.x64.exe
+          Get-ChildItem engine | Select-Object -First 30 Name
+
+      - name: Build the app
+        run: python build.py
+
+      - name: Smoke test the built app
+        continue-on-error: true
+        run: |
+          Start-Process dist\LocalRunner\LocalRunner.exe
+          Start-Sleep -Seconds 25
+          (Invoke-WebRequest http://127.0.0.1:1234/api/specs -UseBasicParsing).Content
+          (Invoke-WebRequest http://127.0.0.1:1234/api/cluster -UseBasicParsing).Content
+          (Invoke-WebRequest http://127.0.0.1:1234/ -UseBasicParsing).StatusCode
+          Stop-Process -Name LocalRunner -Force
+
+      - name: Zip the portable build
+        run: Compress-Archive -Path dist\LocalRunner -DestinationPath LocalRunner-Windows.zip
+
+      - name: Build the installer
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalRunner-Windows
+          path: |
+            installer/LocalRunner-Setup.exe
+            LocalRunner-Windows.zip
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/LocalRunner-Setup.exe
+            LocalRunner-Windows.zip
