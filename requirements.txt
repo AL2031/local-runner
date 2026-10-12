@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+psutil
+httpx
+huggingface_hub
+pywebview
