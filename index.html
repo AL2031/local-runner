@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Runner</title>
+<style>
+:root{--bg:#080d1c;--panel:#0d1428;--raise:#141d38;--line:#1b2644;--ink:#e9eef9;--mute:#8793b0;--acc:#2f6bff;--gpu:#3ecf8e;--ram:#5b9cf5;--disk:#e0a050}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:13.5px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--raise);border-radius:6px;padding:5px 11px}
+button:hover{border-color:#4a4a4a;background:#333}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+input,select,textarea{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+h2{font-size:18px;margin:0 0 12px;word-break:break-word}h3{font-size:12.5px;font-weight:600;color:var(--mute);margin:18px 0 6px}
+.mute{color:var(--mute)}.pad{padding:14px}
+.fit-gpu{color:var(--gpu)}.fit-ram{color:var(--ram)}.fit-disk{color:var(--disk)}
+#app{flex:1;display:flex;min-height:0}
+#rail{width:66px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0}
+#rail button{width:54px;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;color:var(--mute);font-size:11px;border-radius:8px}
+#rail button.on{background:var(--raise);color:var(--ink)}
+#rail svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#stage{flex:1;display:flex;flex-direction:column;min-width:0}
+#bar{height:46px;flex:none;display:flex;justify-content:center;align-items:center;border-bottom:1px solid var(--line);position:relative}
+#pickbtn{min-width:320px;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:8px;background:var(--panel)}
+#pick{position:absolute;top:42px;z-index:5;width:420px;max-width:92vw;max-height:60vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px #0009;padding:6px}
+#pick .it{display:flex;justify-content:space-between;gap:10px;width:100%;border:0;background:none;text-align:left;padding:8px 10px}
+#pick .it:hover{background:var(--raise)}
+#views{flex:1;display:flex;min-height:0}
+.view{display:none;flex:1;min-width:0;min-height:0}.view.on{display:flex}
+#chatlist{width:230px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto}
+#chatlist .pri{width:100%;margin-bottom:8px}
+.ci{display:flex;align-items:center;border-radius:6px}.ci.on,.ci:hover{background:var(--raise)}
+.ci button{border:0;background:none;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci .x{flex:none;color:var(--mute);padding:5px 8px}
+#center{flex:1;display:flex;flex-direction:column;min-width:0}
+#msgs{flex:1;overflow:auto;padding:24px 0}
+.m{max-width:780px;margin:0 auto 18px;padding:0 24px}
+.m .body{white-space:pre-wrap;word-wrap:break-word}
+.m.user{text-align:right}.m.user .body{display:inline-block;text-align:left;background:var(--raise);border-radius:12px;padding:8px 14px}
+.m .who{color:var(--mute);font-size:12px;margin-bottom:2px}.m.err .body{color:#ef6b63}
+.empty{height:100%;display:grid;place-content:center;text-align:center;color:var(--mute);gap:4px}
+.empty b{color:var(--ink);font-size:17px}
+#comp{width:100%;max-width:828px;margin:0 auto;padding:0 24px 8px}
+.box{display:flex;align-items:flex-end;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px}
+.box textarea{flex:1;border:0;resize:none;max-height:180px;background:none;padding:6px}.box textarea:focus-visible{outline:0}
+.box button{width:34px;height:34px;border-radius:50%;padding:0}
+#stat{height:20px;font-size:12px;color:var(--mute);padding:4px 6px}
+#side{width:290px;flex:none;border-left:1px solid var(--line);padding:6px 16px 16px;overflow:auto}
+#side textarea{width:100%;resize:vertical}
+.r{display:flex;gap:6px}.r select{flex:1;min-width:0}
+.p{display:grid;grid-template-columns:1fr auto;gap:3px 8px;margin:10px 0}.p input,.p select{grid-column:1/-1;width:100%}
+.p input[type=range]{padding:0;accent-color:var(--acc)}
+.pane{flex:1;overflow:auto;padding:20px 28px}
+table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--mute);font-weight:500}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}td:first-child{white-space:normal;word-break:break-word}
+.line{display:flex;align-items:center;gap:12px;padding:6px 0}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;min-height:60px;max-height:260px;margin:0}
+.sw{appearance:none;width:34px;height:20px;border-radius:10px;background:#444;position:relative;cursor:pointer;padding:0;border:0;vertical-align:middle}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.sw:checked{background:var(--acc)}.sw:checked::after{left:16px}
+#v-disc{flex-direction:column}
+#dtop{padding:14px 20px;border-bottom:1px solid var(--line)}#dtop input{width:100%;max-width:560px}
+#dbody{flex:1;display:flex;min-height:0}
+#dres{width:340px;flex:none;border-right:1px solid var(--line);overflow:auto;padding:8px}
+.card{display:flex;flex-direction:column;width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:8px;word-break:break-word}.card.on,.card:hover{background:var(--raise)}
+#ddet{flex:1;overflow:auto;padding:20px 28px}
+.file{padding:12px 0;border-bottom:1px solid var(--line)}
+.bar{position:relative;height:6px;background:var(--line);border-radius:3px;margin:8px 0 4px}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:3px}.bar i.gpu{background:var(--gpu)}.bar i.ram{background:var(--ram)}.bar i.disk{background:var(--disk)}
+.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:#fff;opacity:.5}
+#foot{height:28px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 14px;border-top:1px solid var(--line);background:var(--panel);font-size:12px;color:var(--mute)}
+.act{display:flex;gap:4px;align-items:center;opacity:0;transition:opacity .15s;margin-top:4px}.m:hover .act{opacity:1}.m.user .act{justify-content:flex-end}
+.act button{border:0;background:none;color:var(--mute);padding:2px 6px;font-size:12px}.act button:hover{color:var(--ink)}.st{color:var(--mute);font-size:12px;margin-left:6px}
+.code{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:8px 0;text-align:left}
+.ch{display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid var(--line);color:var(--mute);font-size:12px}.ch button{border:0;background:none;color:var(--mute);padding:0}
+.code pre{border:0;margin:0;max-height:none;background:none;white-space:pre}
+.body code{background:var(--raise);padding:1px 5px;border-radius:4px;font-size:12.5px}.code code{background:none}
+.tcard{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}.th{padding:6px 12px;border-bottom:1px solid var(--line);color:var(--mute);font-size:12px}
+.tcard pre{border:0;border-radius:0;max-height:200px}.ta{padding:6px 12px}.ta:empty,.tr:empty{display:none}
+.start{max-width:620px;margin:40px auto;padding:0 24px}.start>b{font-size:18px}.pick{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.pick>div{flex:1}
+@media(max-width:900px){#side,#chatlist{display:none}}
+
+body{background:var(--bg)}
+button{border-radius:10px}button:hover{border-color:#2c3b66;background:#19254a}button.pri:hover{background:#4079ff}
+input,select,textarea{background:#0a1124;border-radius:10px}
+#rail{width:98px;padding:14px 0;gap:8px;background:#0a1124}
+#rail button{width:84px;padding:12px 0 9px;border-radius:12px;font-size:12.5px;border:1px solid transparent}
+#rail button:hover{background:#111a35}
+#rail button.on{background:linear-gradient(180deg,#16306b,#0f2150);border-color:#2557d6;color:#fff}
+#rail svg{width:24px;height:24px}#railbot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:12px}
+#railst{width:84px;display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:7px 8px;font-size:10.5px;line-height:1.3;color:var(--mute)}
+#railst b{display:block;color:var(--ink);font-weight:500}.dot{width:8px;height:8px;border-radius:50%;background:#5b6584;flex:none;display:inline-block;margin-right:7px}.dot.on{background:var(--gpu)}.dot.wait{background:var(--disk)}#railst .dot{margin:0}
+#gear{border:0;background:none;color:var(--mute);padding:6px}#gear svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round}
+.ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.ph h1{font-size:23px;margin:0;font-weight:650}
+.ib{border:0;background:none;color:var(--mute);padding:7px;display:grid;place-items:center}.ib:hover{color:var(--ink);background:var(--raise)}.ib.on{color:#7fb0ff;background:#12285a}
+#pickbtn svg,.ib svg,.sbox svg,#nc svg,.ci svg,.adv svg,.empty svg,#send svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#chatlist{width:292px;padding:26px 16px;background:#0a1124}
+.sbox{display:flex;align-items:center;gap:8px;background:#0a1124;border:1px solid var(--line);border-radius:10px;padding:0 12px;margin-bottom:14px;color:var(--mute)}.sbox input{border:0;background:none;flex:1;padding:10px 0}.sbox input:focus-visible{outline:0}
+#chatlist #nc{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-size:15px;font-weight:550;margin-bottom:14px;border-radius:10px}
+.ci{padding:9px 6px 9px 10px;gap:12px;margin-bottom:2px;border-radius:10px;border-left:3px solid transparent;color:var(--mute)}.ci.on{background:#10234f;border-left-color:#2f6bff;color:var(--ink)}
+.ci button:first-of-type{display:flex;flex-direction:column;line-height:1.35;font-size:12px;color:var(--mute)}.ci button b{font-weight:500;font-size:13.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.ci .x{font-size:18px;letter-spacing:1px}
+#bar{height:76px;justify-content:flex-start;gap:18px;padding:0 22px}
+#pickbtn{display:flex;align-items:center;gap:10px;width:330px;padding:11px 14px;background:#0a1124;text-align:left}#pickbtn .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
+#pick{top:66px;left:22px}#mstat{display:flex;align-items:center;color:var(--ink);flex:1;font-size:13.5px}#mstat .mute{margin-left:6px}
+#msgs{padding:28px 0}.m.user .body{background:#12285a;border-radius:14px}.m .who{color:#7fb0ff}
+.empty{gap:8px}.empty svg{width:96px;height:96px;margin:0 auto 14px;stroke-width:1.1;color:#5b6a94}.empty b{font-size:21px;font-weight:600}
+#comp{max-width:880px;padding:0 24px 14px}.box{display:grid;grid-template-columns:1fr auto;border-radius:16px;padding:12px 14px;background:#0a1124;gap:6px 10px}
+.box textarea{grid-column:1/-1;padding:4px 2px}.tools{display:flex;gap:8px}.tools .ib{background:var(--raise);border-radius:10px;width:40px;height:40px}.tools .ib.on{background:#12285a}
+.box #send{width:46px;height:42px;border-radius:12px;grid-column:2;grid-row:2}.box #send:disabled{opacity:.5}
+#side{width:410px;padding:26px 22px;background:#0a1124}#side.hide{display:none}
+.tabs{display:flex;background:#0a1124;border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:18px}.tabs button{flex:1;border:1px solid transparent;background:none;color:var(--mute);padding:11px;font-weight:550}
+.tabs button.on{background:#10234f;border-color:#2557d6;color:#7fb0ff}
+.cd{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}.cd>b{display:block;font-size:15px;margin-bottom:10px}
+.cd select{width:100%;padding:11px 12px}.cd textarea{width:100%;min-height:110px}.cd .r{margin-top:12px}.cd .r button{flex:1}
+.ch2{display:flex;justify-content:space-between;align-items:center}.ch2 b{font-size:15px;margin-bottom:10px}.lnk{border:0;background:none;color:#4f8bff;padding:0}.lnk:hover{background:none;text-decoration:underline}
+.cnt{text-align:right;color:var(--mute);font-size:11.5px;margin-top:-26px;padding-right:10px;position:relative;pointer-events:none}
+.adv{display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:550}.adv:hover{background:var(--raise)}
+.p{margin:14px 0 16px}.p output{color:var(--ink)}
+input[type=range]{appearance:none;height:5px;border-radius:3px;background:#1f2a48;border:0;padding:0}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:17px;height:17px;border-radius:50%;background:#7fb0ff;border:0}input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:#7fb0ff;border:0}
+#foot{background:transparent;border-top:0;height:24px}
+@media(max-width:1250px){#side{width:330px}#chatlist{width:250px}}@media(max-width:1000px){#side{display:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="rail">
+    <button data-v="chat" class="on"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg>Chat</button>
+    <button data-v="dev"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>Developer</button>
+    <button data-v="models"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>My Models</button>
+    <button data-v="disc"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>Discover</button>
+    <button data-v="cluster"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="5.5" cy="18" r="2.5"/><circle cx="18.5" cy="18" r="2.5"/><path d="M10.7 7.2L6.8 15.8M13.3 7.2l3.9 8.6M8 18h8"/></svg>Cluster</button>
+  <div id="railbot"><div id="railst"><i class="dot on"></i><span>Local Runner<b id="railtxt">Running</b></span></div><button id="gear" title="Developer settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button></div></nav>
+  <div id="stage">
+        <div id="views">
+      <section class="view on" id="v-chat">
+        <aside id="chatlist">
+          <div class="ph"><h1>Chats</h1><button class="ib" id="csb" title="Search chats"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button></div>
+          <div class="sbox"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="cs" placeholder="Search conversations..."></div>
+          <button class="pri" id="nc"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> New chat</button><div id="cl"></div>
+        </aside>
+        <div id="center">
+          <div id="bar"><button id="pickbtn">Select a model to load</button><div id="pick" hidden></div><span id="mstat"></span><button class="ib" id="cfgbtn" title="Configure"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button></div>
+          <div id="msgs"></div>
+          <div id="comp"><div class="box"><textarea id="in" rows="1" placeholder="Send a message to the model..."></textarea><div class="tools"><button class="ib" id="attach" title="Attach a text file"><svg viewBox="0 0 24 24"><path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg></button><button class="ib" id="agbtn" title="Agentic coding"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></button><input type="file" id="file" hidden></div><button class="pri" id="send" title="Send"></button></div><div id="stat"></div></div>
+        </div>
+        <aside id="side">
+          <div class="ph"><h1>Configure</h1><button class="ib" id="cfgx" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+          <div class="tabs"><button class="on" data-t="prompt">Prompt</button><button data-t="params">Parameters</button></div>
+          <div id="tp-prompt">
+            <div class="cd"><div class="ch2"><b>System Prompt</b><button class="lnk" id="sreset">Reset</button></div><textarea id="sys" rows="5" maxlength="1024" placeholder="Type system prompt here…"></textarea><div class="cnt" id="scnt"></div></div>
+            <div class="cd"><b>Model Preset</b><select id="preset"></select><div class="mute" id="pdesc" style="margin-top:8px"></div><div class="r"><button id="psave">Save</button><button id="pdel">Delete</button></div></div>
+            <div class="cd"><b>Generation Settings</b><div id="params"></div></div>
+            <button class="cd adv" id="advgo"><span>Advanced</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+          </div>
+          <div id="tp-params" hidden>
+            <div class="cd"><b>Context length</b><select id="ctx"><option>2048</option><option selected>4096</option><option>8192</option><option>16384</option></select></div>
+            <div class="cd"><b>Agent</b>
+              <label class="r" style="align-items:center;gap:10px"><input type="checkbox" class="sw" id="agent"> Agentic coding</label>
+              <div id="agentopts" hidden>
+                <div class="r"><input id="ws" placeholder="Project folder" style="flex:1;min-width:0"><button id="browse" style="flex:none">Browse</button></div>
+                <label class="p">Approvals<select id="appr"><option value="ask">Ask before edits and commands</option><option value="edits">Auto-approve edits, ask for commands</option><option value="all">Auto-approve everything</option></select></label>
+                <div class="mute">The agent can read, write and run commands inside this folder only. Use a context length of 8192 or more and a coding model.</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+      <section class="view" id="v-dev"><div class="pane">
+        <div class="line"><input type="checkbox" class="sw" id="srvon" aria-label="Server running"><b id="srvtxt">Status: Running</b><span class="mute" id="srvurl"></span></div>
+        <h3>Loaded models</h3><div id="loadedlist"></div>
+        <h3>Server logs</h3><pre id="logs"></pre>
+        <h3>Example request</h3><pre id="curl"></pre>
+      </div></section>
+      <section class="view" id="v-models"><div class="pane"><h2>My Models</h2><div id="mtable"></div></div></section>
+      <section class="view" id="v-cluster"><div class="pane">
+        <h2>Cluster</h2>
+        <div class="mute" style="max-width:640px">Link two or more computers on the same network to run models that are too big for one. Install Local Runner on each computer (same version), turn on <b>Share this computer</b> on the helpers, then add them here from the main computer.</div>
+        <h3>Use other computers</h3>
+        <div class="line"><input type="checkbox" class="sw" id="clon" aria-label="Use other computers"><b>Spread models across the computers below</b></div>
+        <div id="clbusy" class="mute" hidden>A model is running on the cluster. Eject it to re-check the other computers.</div>
+        <div id="wlist"></div>
+        <div class="line"><input id="wadd" placeholder="Add by address, for example 192.168.1.20" style="width:300px"><button id="waddbtn" class="pri">Add</button><button id="scanbtn">Scan network</button><button id="wrefresh">Check status</button></div>
+        <div id="scanres"></div>
+        <h3>Share this computer</h3>
+        <div class="line"><input type="checkbox" class="sw" id="wkon" aria-label="Share this computer"><b>Let other computers use this one's GPU and memory</b></div>
+        <div id="wkinfo" class="mute"></div>
+        <div id="wkerr" class="fit-disk" style="word-break:break-word"></div>
+        <div class="mute" style="max-width:640px;margin-top:10px">Only turn sharing on for computers on a network you trust (home or office). Anyone on the network can use a sharing computer, and the first time you turn it on Windows may ask to allow access: choose <b>Private networks</b>. Speed depends on the network: wired gigabit works well, Wi-Fi is slower. A sharing computer helps one main computer at a time.</div>
+      </div></section>
+      <section class="view" id="v-disc">
+        <div id="dtop"><input id="dq" placeholder="Search models (for example llama, qwen, mistral)"></div>
+        <div id="dbody"><div id="dres"></div><div id="ddet"><div class="mute">Select a model to see its files.</div></div></div>
+      </section>
+    </div>
+  </div>
+</div>
+<footer id="foot"><span id="hw">Local Runner</span><span id="dl"></span></footer>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const fmt=b=>b>=1e9?(b/1e9).toFixed(2)+' GB':(b/1e6).toFixed(0)+' MB';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const FIT={gpu:'Full GPU offload',ram:'CPU, fits in RAM',disk:'Streams from disk (slow)'};
+const H={'Content-Type':'application/json'};
+const ico=p=>`<svg viewBox="0 0 24 24">${p}</svg>`,LOGO=ico('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),CHEV=ico('<path d="M6 9l6 6 6-6"/>'),BUB=ico('<path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/>');
+const SENDI=ico('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>'),STOP='■',ROBOT='<svg viewBox="0 0 64 64"><rect x="16" y="22" width="32" height="26" rx="8"/><circle cx="26" cy="35" r="2.5"/><circle cx="38" cy="35" r="2.5"/><path d="M32 22v-7M10 28l-4-2M54 28l4-2M14 17l-3-3M50 17l3-3"/></svg>';
+const ago=t=>{const s=(Date.now()-t)/1e3;return s<60?'Just now':s<3600?Math.floor(s/60)+' min ago':s<86400?Math.floor(s/3600)+' hr ago':s<172800?'Yesterday':Math.floor(s/86400)+' days ago'};
+let csq='';
+const PARAMS=[['temperature','Temperature',0,2,.05,.7],['top_p','Top P',0,1,.05,.95],['max_tokens','Max Tokens',64,8192,64,1024],['repeat_penalty','Repeat Penalty',1,2,.05,1.1]];
+async function j(u,o){const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||d.error||'Request failed');return d}
+let picks=[],specs={loaded:[]},models=[],view='chat',sel='',presets=[],chats=[],cur,hist=[],busy=false,ctrl,poll,discInit=false;
+try{chats=JSON.parse(localStorage.chats||'[]')}catch(e){}
+
+/* navigation */
+function nav(v){
+  view=v;$$('#rail button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  $$('.view').forEach(e=>e.classList.toggle('on',e.id==='v-'+v));
+  if(v==='models')renderModels();if(v==='dev')renderDev();if(v==='cluster')renderCluster();
+  if(v==='disc'&&!discInit){discInit=true;search('instruct')}
+}
+$$('#rail button[data-v]').forEach(b=>b.onclick=()=>nav(b.dataset.v));$('#gear').onclick=()=>nav('dev');
+
+/* state */
+async function refresh(){
+  specs=await j('/api/specs');models=await j('/api/models');
+  if(!specs.loaded.some(m=>m.file===sel))sel=specs.loaded[0]?.file||'';
+  const m=specs.loaded.find(m=>m.file===sel);
+  $('#pickbtn').innerHTML=LOGO+`<span class="nm">${m?esc(m.name):'Select a model to load'}</span>`+CHEV;
+  $('#mstat').innerHTML=m?`<i class="dot on"></i>Model loaded<span class="mute">· ${FIT[m.mode]}${m.remote?` · ${m.remote+1} computers`:''}</span>`:'<i class="dot"></i><span class="mute">No model loaded</span>';
+  $('#railtxt').textContent=specs.engine?'Running':'No engine';
+  $('#hw').textContent=`Local Runner · ${fmt(specs.ram)} RAM · ${specs.vram?fmt(specs.vram)+' VRAM':'No GPU'}${specs.cluster_nodes?` · +${fmt(specs.cluster_vram)} on ${specs.cluster_nodes} other computer${specs.cluster_nodes>1?'s':''}`:''} · ${fmt(specs.disk_free)} free disk`;
+  if(!hist.length)emptyState();
+  if(view==='models')renderModels();
+}
+function emptyState(){
+  let o;
+  if(!specs.engine)o='<div class="empty"><b>Model engine not found</b>Reinstall Local Runner, or set LOCALRUNNER_ENGINE to a folder that contains llama-server.</div>';
+  else if(sel)o='<div class="empty">'+ROBOT+'<b>Welcome to your local AI assistant</b>Ask anything. The model runs entirely on this computer.</div>';
+  else if(!models.length)o=`<div class="start"><b>Get started</b><div class="mute">Pick a model to download. Everything runs on this computer.</div>${picks.map(p=>`<div class="pick"><div><b>${esc(p.title)}</b><div class="mute">${esc(p.desc)}</div></div>${p.fits?'<span class="fit-gpu">Runs well here</span>':'<span class="fit-disk">Needs more memory</span>'}<button class="${p.fits?'pri':''}" data-pick="${esc(p.repo)}">Download</button></div>`).join('')}</div>`;
+  else o='<div class="empty">'+ROBOT+'<b>Welcome to your local AI assistant</b>Select a model, then start a conversation.</div>';
+  $('#msgs').innerHTML=o;
+}
+async function getPick(repo,b){
+  b.disabled=true;b.textContent='Starting…';
+  try{
+    const gs=await j('/api/repo?id='+encodeURIComponent(repo)),g=gs.find(x=>/Q4_K_M/i.test(x.name))||gs[0];
+    await j('/api/download',{method:'POST',headers:H,body:JSON.stringify({repo,parts:g.parts,size:g.size})});
+    b.textContent='Downloading…';watch();
+  }catch(e){alert(e.message);b.disabled=false;b.textContent='Download'}
+}
+
+/* model picker */
+function togglePick(open){
+  const p=$('#pick');p.hidden=!(open??p.hidden);if(p.hidden)return;
+  p.innerHTML=models.length?models.map(m=>`<button class="it" data-f="${esc(m.file)}"><span>${specs.loaded.some(l=>l.file===m.file)?'● ':''}${esc(m.name)}</span><span class="mute">${fmt(m.size)}</span></button>`).join(''):'<div class="mute pad">No models yet. Open Discover to download one.</div>';
+  $$('#pick .it').forEach(b=>b.onclick=()=>{p.hidden=true;pickModel(b.dataset.f)});
+}
+$('#pickbtn').onclick=e=>{e.stopPropagation();togglePick()};
+document.addEventListener('click',e=>{if(!e.target.closest('#pick'))$('#pick').hidden=true});
+async function pickModel(f){
+  $('#pickbtn').innerHTML=LOGO+'<span class="nm">Loading model…</span>'+CHEV;$('#mstat').innerHTML='<i class="dot wait"></i>Loading…';
+  try{await j('/api/load',{method:'POST',headers:H,body:JSON.stringify({file:f,n_ctx:+$('#ctx').value})});sel=f}catch(e){alert(e.message)}
+  await refresh();
+}
+async function unload(f){await j('/api/unload',{method:'POST',headers:H,body:JSON.stringify({file:f})});await refresh();if(view==='dev')renderDev()}
+
+/* chat */
+function md(s){
+  const p=s.split(/```(\w*)\n?([\s\S]*?)(?:```|$)/g);let o='';
+  for(let i=0;i<p.length;i+=3){
+    o+=esc(p[i]).replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>');
+    if(i+2<p.length)o+=`<div class="code"><div class="ch"><span>${esc(p[i+1]||'code')}</span><button class="cp">Copy</button></div><pre>${esc(p[i+2])}</pre></div>`;
+  }
+  return o;
+}
+function setBody(e,t){e.dataset.raw=t;const b=e.querySelector('.body');e.classList.contains('bot')?b.innerHTML=md(t):b.textContent=t}
+function add(role,text){
+  if($('.empty,.start'))$('#msgs').innerHTML='';
+  const e=document.createElement('div');e.className='m '+role;
+  e.innerHTML=(role==='bot'?`<div class="who">${esc(specs.loaded.find(m=>m.file===sel)?.name||'Model')}</div>`:'')+'<div class="body"></div><div class="act"><button data-a="copy">Copy</button>'+(role==='bot'?'<button data-a="regen">Regenerate</button>':'')+'<span class="st"></span></div>';
+  setBody(e,text);$('#msgs').append(e);$('#msgs').scrollTop=1e9;return e;
+}
+function toolCard(t){
+  const e=document.createElement('div');e.className='m';e.id='tc-'+t.id;
+  const arg=t.name==='write_file'?t.args.path+'\n\n'+t.args.content:t.name==='run_command'?'$ '+t.args.command:t.args.path||'.';
+  e.innerHTML=`<div class="tcard"><div class="th">${esc(t.name)}</div><pre>${esc(String(arg).slice(0,3000))}</pre><div class="ta">${t.needs?`<button class="pri" data-ap="${t.id}" data-ok="1">Allow</button> <button data-ap="${t.id}" data-ok="0">Deny</button>`:'<span class="mute">Auto-approved</span>'}</div><pre class="tr"></pre></div>`;
+  $('#msgs').append(e);$('#msgs').scrollTop=1e9;
+}
+$('#msgs').onclick=e=>{
+  const b=e.target;
+  if(b.dataset.pick)getPick(b.dataset.pick,b);
+  if(b.classList.contains('cp')){navigator.clipboard.writeText(b.closest('.code').querySelector('pre').textContent);b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1200)}
+  if(b.dataset.a==='copy')navigator.clipboard.writeText(b.closest('.m').dataset.raw);
+  if(b.dataset.a==='regen'&&!busy&&hist.length>1){hist.pop();const t=hist.pop().content,ms=$$('#msgs .m');ms.at(-1).remove();ms.at(-2).remove();send(t)}
+  if(b.dataset.ap){const ok=b.dataset.ok==='1';fetch('/api/agent/approve',{method:'POST',headers:H,body:JSON.stringify({id:b.dataset.ap,ok})});b.parentElement.innerHTML=`<span class="mute">${ok?'Running…':'Denied'}</span>`}
+};
+$('#agent').onchange=e=>{$('#agentopts').hidden=!e.target.checked;$('#in').placeholder=e.target.checked?'Describe a coding task for the agent':'Send a message to the model'};
+$('#browse').onclick=async()=>{const f=window.pywebview?.api?await pywebview.api.pick_folder():prompt('Project folder path');if(f)$('#ws').value=f};
+function newChat(){cur={id:Date.now(),title:'New chat',messages:[]};hist=cur.messages;emptyState();$('#stat').textContent='';renderChats()}
+function saveChat(){
+  if(!hist.length)return;
+  if(!chats.includes(cur)){cur.title=hist[0].content.slice(0,40);chats.unshift(cur)}cur.t=Date.now();
+  try{localStorage.chats=JSON.stringify(chats)}catch(e){}renderChats();
+}
+function renderChats(){
+  const q=csq,row=(c,i)=>`<div class="ci${c===cur?' on':''}">${BUB}<button data-o="${i}"><b>${esc(c.title)}</b><small>${ago(c.t||c.id)}</small></button><button class="x" data-x="${i}" aria-label="Delete chat" title="Delete chat">⋯</button></div>`;
+  $('#cl').innerHTML=(chats.includes(cur)||q?'':`<div class="ci on">${BUB}<button><b>New conversation</b><small>Just now</small></button></div>`)+chats.map((c,i)=>[c,i]).filter(([c])=>c.title.toLowerCase().includes(q)).map(([c,i])=>row(c,i)).join('')||(q?'<div class="mute pad">No chats match.</div>':'');
+  $$('[data-o]').forEach(b=>b.onclick=()=>{cur=chats[b.dataset.o];hist=cur.messages;$('#msgs').innerHTML='';hist.forEach(m=>add(m.role==='user'?'user':'bot',m.content));renderChats()});
+  $$('[data-x]').forEach(b=>b.onclick=()=>{if(!confirm('Delete this chat?'))return;const c=chats.splice(b.dataset.x,1)[0];try{localStorage.chats=JSON.stringify(chats)}catch(e){}c===cur?newChat():renderChats()});
+}
+async function send(forced){
+  if(busy){ctrl.abort();return}
+  const text=typeof forced==='string'?forced:$('#in').value.trim();if(!text)return;
+  if(!sel){togglePick(true);return}
+  const agent=$('#agent').checked;
+  if(agent&&!$('#ws').value.trim()){$('#side').classList.remove('hide');tab('params');$('#ws').focus();return}
+  $('#in').value='';$('#in').style.height='auto';busy=true;$('#send').innerHTML=STOP;
+  hist.push({role:'user',content:text});add('user',text);
+  let out=add('bot','…'),seg='',n=0;ctrl=new AbortController();const t0=Date.now();
+  const req={model:sel,system:$('#sys').value,n_ctx:+$('#ctx').value,messages:hist};
+  PARAMS.forEach(([k])=>req[k]=+$('#p_'+k).value);
+  if(agent){req.workspace=$('#ws').value.trim();req.approval=$('#appr').value}
+  try{
+    const r=await fetch(agent?'/api/agent':'/api/chat',{method:'POST',headers:H,body:JSON.stringify(req),signal:ctrl.signal});
+    if(!r.ok)throw new Error((await r.json()).detail);
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    for(;;){
+      const {done,value}=await rd.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});const ps=buf.split('\n\n');buf=ps.pop();
+      for(const p of ps){
+        const d=JSON.parse(p.slice(6));
+        if(d.t){seg+=d.t;n++;setBody(out,seg);$('#msgs').scrollTop=1e9}
+        if(d.tool){const pre=seg.replace(/```[\s\S]*$/,'').trim();pre?setBody(out,pre):out.remove();toolCard(d.tool);out=add('bot','');out.querySelector('.who').remove();seg=''}
+        if(d.result){const c=$('#tc-'+d.result.id);c.querySelector('.tr').textContent=d.result.text;c.querySelector('.ta').innerHTML=''}
+        if(d.error){out.classList.add('err');setBody(out,d.error)}
+      }
+    }
+  }catch(e){if(e.name!=='AbortError'){out.classList.add('err');setBody(out,e.message)}}
+  if(seg.trim()){hist.push({role:'assistant',content:seg});out.querySelector('.st').textContent=`${(n/Math.max((Date.now()-t0)/1000,.001)).toFixed(2)} tok/s · ${n} tokens`}
+  else{hist.pop();if(!out.classList.contains('err'))out.remove()}
+  saveChat();busy=false;ctrl=null;$('#send').innerHTML=SENDI;refresh();
+}
+$('#send').onclick=send;$('#nc').onclick=newChat;
+$('#in').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
+$('#in').oninput=e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'};
+
+/* presets & settings */
+$('#params').innerHTML=PARAMS.map(([k,l,a,b,s,d])=>`<label class="p">${l}<output id="o_${k}">${d}</output><input type="range" id="p_${k}" min="${a}" max="${b}" step="${s}" value="${d}"></label>`).join('');
+PARAMS.forEach(([k])=>$('#p_'+k).oninput=e=>{$('#o_'+k).textContent=e.target.value;fillR(e.target)});
+async function loadPresets(keep){
+  presets=await j('/api/presets');
+  $('#preset').innerHTML=presets.map(p=>`<option>${esc(p.name)}</option>`).join('');
+  if(keep)$('#preset').value=keep;applyPreset();
+}
+function applyPreset(){setTimeout(cfgSync);
+  const p=presets[$('#preset').selectedIndex];if(!p)return;
+  $('#sys').value=p.system||'';PARAMS.forEach(([k])=>{if(p[k]!=null){$('#p_'+k).value=p[k];$('#o_'+k).textContent=p[k]}});
+}
+async function putPresets(keep){await j('/api/presets',{method:'PUT',headers:H,body:JSON.stringify(presets)});await loadPresets(keep)}
+$('#preset').onchange=applyPreset;
+$('#psave').onclick=async()=>{
+  const name=(prompt('Preset name',$('#preset').value)||'').trim();if(!name)return;
+  const np={name,system:$('#sys').value};PARAMS.forEach(([k])=>np[k]=+$('#p_'+k).value);
+  const i=presets.findIndex(p=>p.name===name);i>=0?presets[i]=np:presets.push(np);putPresets(name);
+};
+$('#pdel').onclick=()=>{const p=presets[$('#preset').selectedIndex];if(p&&confirm(`Delete preset "${p.name}"?`)){presets=presets.filter(x=>x!==p);putPresets()}};
+
+/* configure panel */
+const DESC={Default:'Balanced and general purpose.',Concise:'Short, to-the-point answers.',Coder:'Precise code with brief notes.','Coding agent':'Careful edits for agentic coding.','Creative writer':'Imaginative, expressive writing.'};
+function fillR(el){el.style.background=`linear-gradient(90deg,var(--acc) ${(el.value-el.min)/(el.max-el.min)*100}%,#1f2a48 0)`}
+function cfgSync(){$('#scnt').textContent=$('#sys').value.length+'/1024';$('#pdesc').textContent=DESC[$('#preset').value]||'Custom preset.';PARAMS.forEach(([k])=>fillR($('#p_'+k)))}
+function tab(t){$$('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$('#tp-prompt').hidden=t!=='prompt';$('#tp-params').hidden=t!=='params'}
+$$('.tabs button').forEach(b=>b.onclick=()=>tab(b.dataset.t));$('#advgo').onclick=()=>tab('params');
+$('#cfgx').onclick=()=>$('#side').classList.add('hide');$('#cfgbtn').onclick=()=>$('#side').classList.toggle('hide');
+$('#sys').oninput=cfgSync;$('#sreset').onclick=applyPreset;
+$('#cs').oninput=e=>{csq=e.target.value.toLowerCase();renderChats()};$('#csb').onclick=()=>$('#cs').focus();
+$('#attach').onclick=()=>$('#file').click();
+$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{$('#in').value+=(($('#in').value?'\n\n':'')+`File: ${f.name}\n\`\`\`\n${String(r.result).slice(0,60000)}\n\`\`\``);$('#in').dispatchEvent(new Event('input'));$('#in').focus()};r.readAsText(f);e.target.value=''};
+{const ao=$('#agent').onchange;$('#agent').onchange=e=>{ao(e);$('#agbtn').classList.toggle('on',e.target.checked)}}
+$('#agbtn').onclick=()=>{const a=$('#agent');a.checked=!a.checked;a.onchange({target:a});if(a.checked&&!$('#ws').value.trim()){$('#side').classList.remove('hide');tab('params')}};
+$('#send').innerHTML=SENDI;cfgSync();
+
+/* my models */
+function renderModels(){
+  const q=n=>(n.match(/\b(IQ\d\w*|Q\d(?:_[A-Z0-9]+)+|BF16|F16|F32)\b/i)||['—'])[0].toUpperCase();
+  const pm=n=>(n.match(/(\d+(?:\.\d+)?)\s?B\b/i)||[])[0]||'—';
+  $('#mtable').innerHTML=models.length?`<table><tr><th>Model</th><th>Arch</th><th>Params</th><th>Quant</th><th>Size</th><th>Modified</th><th></th></tr>`+models.map((m,i)=>{
+    const on=specs.loaded.some(l=>l.file===m.file);
+    return `<tr><td>${esc(m.name)}<div class="fit-${m.fit}">${FIT[m.fit]}</div></td><td>${esc(m.name.split(/[-_ .]/)[0])}</td><td>${pm(m.name)}</td><td>${q(m.name)}</td><td>${fmt(m.size)}</td><td>${new Date(m.mtime*1000).toLocaleDateString()}</td>
+    <td><button data-${on?'un':'ld'}="${i}" class="${on?'':'pri'}">${on?'Eject':'Load'}</button> <button data-rm="${i}">Delete</button></td></tr>`}).join('')+'</table>'
+    :'<div class="mute">No models yet. Open Discover to download one.</div>';
+  $$('[data-ld]').forEach(b=>b.onclick=()=>pickModel(models[b.dataset.ld].file));
+  $$('[data-un]').forEach(b=>b.onclick=()=>unload(models[b.dataset.un].file));
+  $$('[data-rm]').forEach(b=>b.onclick=async()=>{const m=models[b.dataset.rm];if(!confirm(`Delete ${m.name}?`))return;await j('/api/models?file='+encodeURIComponent(m.file),{method:'DELETE'});refresh()});
+}
+
+/* developer */
+async function renderDev(){
+  const s=await j('/api/server'),u=`http://localhost:${location.port||80}/v1`;
+  $('#srvon').checked=s.on;$('#srvtxt').textContent='Status: '+(s.on?'Running':'Stopped');$('#srvurl').textContent='Reachable at '+u;
+  $('#loadedlist').innerHTML=specs.loaded.length?specs.loaded.map(m=>`<div class="line">${esc(m.name)} <span class="fit-${m.mode}">${FIT[m.mode]}${m.remote?` · ${m.remote+1} computers`:''}</span><button data-e="${esc(m.file)}">Eject</button></div>`).join(''):'<div class="mute">No models loaded. The API loads models on first request.</div>';
+  $$('[data-e]').forEach(b=>b.onclick=()=>unload(b.dataset.e));
+  $('#logs').textContent=s.logs.join('\n')||'No requests yet.';
+  $('#curl').textContent=`curl ${u}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${specs.loaded[0]?.name||'MODEL_NAME'}","messages":[{"role":"user","content":"Hello"}]}'`;
+}
+$('#srvon').onchange=async e=>{await j('/api/server',{method:'POST',headers:H,body:JSON.stringify({on:e.target.checked})});renderDev()};
+setInterval(()=>{if(view==='dev')renderDev()},2000);
+
+/* cluster */
+let cl={workers:[],worker:{},ips:[]};
+const post=(u,b)=>j(u,{method:'POST',headers:H,body:JSON.stringify(b||{})});
+async function renderCluster(){
+  try{cl=await j('/api/cluster')}catch(e){return}
+  $('#clon').checked=cl.use;$('#clbusy').hidden=!cl.busy;
+  $('#wlist').innerHTML=cl.workers.length?cl.workers.map(w=>`<div class="line"><span class="${w.online?'fit-gpu':'fit-disk'}" title="${w.online?'Online':'Offline'}">●</span><div style="flex:1;min-width:0"><b>${esc(w.name||w.addr)}</b> <span class="mute">${w.name?esc(w.addr):''}</span><div class="mute">${w.online?(w.total?`${fmt(w.free)} free of ${fmt(w.total)}`:esc(w.error||'Connected')):esc(w.error||'Not checked yet')}</div></div><button data-wrm="${esc(w.addr)}">Remove</button></div>`).join(''):'<div class="mute" style="padding:8px 0">No other computers added yet.</div>';
+  $$('[data-wrm]').forEach(b=>b.onclick=async()=>{await j('/api/cluster/workers?addr='+encodeURIComponent(b.dataset.wrm),{method:'DELETE'});await refresh();renderCluster()});
+  const w=cl.worker;
+  $('#wkon').checked=w.on;$('#wkon').disabled=!w.available;
+  $('#wkinfo').innerHTML=!w.available?'Sharing is not available: this build has no RPC engine.':w.on?`Sharing is on. On the main computer, scan the network, or add one of these addresses: ${cl.ips.map(ip=>`<code>${esc(ip)}:${w.port}</code>`).join(' ')||'(no network found)'}`:'';
+  $('#wkerr').textContent=w.on?'':(w.error||'');
+}
+async function withBtn(b,t,f){const o=b.textContent;b.disabled=true;b.textContent=t;try{await f()}catch(e){alert(e.message)}finally{b.disabled=false;b.textContent=o}}
+async function addWorker(addr,name){await post('/api/cluster/workers',{addr,name:name||''});await refresh();await renderCluster()}
+$('#clon').onchange=async e=>{await post('/api/cluster/use',{on:e.target.checked});await refresh();renderCluster()};
+$('#wkon').onchange=async e=>{try{await post('/api/cluster/worker',{on:e.target.checked})}catch(x){alert(x.message);e.target.checked=false}renderCluster()};
+$('#waddbtn').onclick=e=>{const a=$('#wadd').value.trim();if(a)withBtn(e.target,'Connecting…',async()=>{await addWorker(a);$('#wadd').value=''})};
+$('#wadd').onkeydown=e=>{if(e.key==='Enter')$('#waddbtn').click()};
+$('#wrefresh').onclick=e=>withBtn(e.target,'Checking…',async()=>{await post('/api/cluster/refresh');await refresh();await renderCluster()});
+$('#scanbtn').onclick=e=>withBtn(e.target,'Scanning…',async()=>{
+  const f=await post('/api/cluster/scan');
+  $('#scanres').innerHTML=f.length?'<h3>Found on your network</h3>'+f.map((x,i)=>`<div class="line"><div style="flex:1"><b>${esc(x.name||x.addr)}</b> <span class="mute">${esc(x.addr)}${x.vram?' · '+fmt(x.vram)+' GPU memory':''} · ${fmt(x.ram)} RAM</span></div><button class="pri" data-fa="${i}">Add</button></div>`).join(''):'<div class="mute" style="padding:8px 0">No computers found. Make sure Share this computer is on there, both are on the same network, and the firewall allows Local Runner. You can also add the address by hand.</div>';
+  $$('[data-fa]').forEach(b=>b.onclick=()=>withBtn(b,'Adding…',async()=>{await addWorker(f[b.dataset.fa].addr,f[b.dataset.fa].name);b.closest('.line').remove()}));
+});
+setInterval(()=>{if(view==='cluster')renderCluster()},4000);
+
+/* discover */
+function bar(size,fit){
+  const tot=specs.vram+(specs.cluster_vram||0),max=Math.max(size,specs.ram,tot)*1.05;
+  return `<div class="bar"><i class="${fit}" style="width:${size/max*100}%"></i><b title="RAM" style="left:${specs.ram/max*100}%"></b>${tot?`<b title="GPU memory${specs.cluster_vram?' (all computers)':''}" style="left:${tot/max*100}%"></b>`:''}</div>`;
+}
+async function search(q){
+  $('#dres').innerHTML='<div class="mute pad">Searching…</div>';
+  try{
+    const rs=await j('/api/search?q='+encodeURIComponent(q));
+    $('#dres').innerHTML=rs.map(r=>`<button class="card" data-r="${esc(r.id)}"><b>${esc(r.id.split('/')[1]||r.id)}</b><span class="mute">${esc(r.id.split('/')[0])} · ${r.downloads.toLocaleString()} downloads</span></button>`).join('')||'<div class="mute pad">No results.</div>';
+    $$('[data-r]').forEach(b=>b.onclick=()=>{$$('.card').forEach(c=>c.classList.remove('on'));b.classList.add('on');openRepo(b.dataset.r)});
+  }catch(e){$('#dres').innerHTML=`<div class="mute pad">${esc(e.message)}</div>`}
+}
+$('#dq').onkeydown=e=>{if(e.key==='Enter'&&e.target.value.trim())search(e.target.value.trim())};
+async function openRepo(id){
+  $('#ddet').innerHTML='<div class="mute">Loading files…</div>';
+  try{
+    const gs=await j('/api/repo?id='+encodeURIComponent(id));
+    $('#ddet').innerHTML=`<h2>${esc(id)}</h2>`+(gs.map((g,i)=>`<div class="file"><div class="line"><b style="flex:1;word-break:break-word">${esc(g.name)}</b><span>${fmt(g.size)}</span><button class="pri" data-get="${i}">Download</button></div>${bar(g.size,g.fit)}<span class="fit-${g.fit}">${FIT[g.fit]}</span></div>`).join('')||'<div class="mute">No GGUF files in this repository.</div>');
+    $$('[data-get]').forEach(b=>b.onclick=async()=>{
+      const g=gs[b.dataset.get];
+      try{await j('/api/download',{method:'POST',headers:H,body:JSON.stringify({repo:id,parts:g.parts,size:g.size})});b.textContent='Downloading…';b.disabled=true;watch()}catch(e){alert(e.message)}
+    });
+  }catch(e){$('#ddet').innerHTML=`<div class="mute">${esc(e.message)}</div>`}
+}
+function watch(){
+  if(poll)return;
+  poll=setInterval(async()=>{
+    const js=await j('/api/downloads'),run=js.filter(x=>x.status==='running'),err=js.find(x=>x.status==='error');
+    $('#dl').textContent=run.length?run.map(x=>`Downloading ${x.name} ${Math.round(x.done/x.total*100)}%`).join(' · '):err?'Download failed: '+err.error:'';
+    if(!run.length){clearInterval(poll);poll=null;await refresh();if(!specs.loaded.length&&models.length===1)pickModel(models[0].file)}
+  },1000);
+}
+
+(async()=>{picks=await j('/api/picks').catch(()=>[]);await refresh();await loadPresets();newChat();})();
+</script>
+</body>
+</html>
