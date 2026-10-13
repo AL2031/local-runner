@@ -38,9 +38,21 @@ jobs:
           New-Item -ItemType Directory engine | Out-Null
           Copy-Item "$($exe.Directory.FullName)\*" engine -Recurse
           if (-not ((Test-Path engine\ggml-rpc-server.exe) -or (Test-Path engine\rpc-server.exe))) { throw "This llama.cpp build has no RPC server, so clustering would not work" }
-          # Ship the Microsoft C++ runtime next to the engine so nothing has to be installed system-wide (no admin needed)
-          Get-ChildItem "$env:SystemRoot\System32" -Include vcruntime140*.dll, msvcp140*.dll, concrt140.dll -File | Copy-Item -Destination engine -Force
-          if (-not (Test-Path engine\vcruntime140.dll)) { throw "VC++ runtime DLLs were not found on the build machine" }
+          # Ship the Microsoft C++ runtime next to the engine so nothing has to be installed system-wide (no admin needed).
+          # Source: the redistributable folder inside the runner's Visual Studio install (the official app-local copy).
+          $crt = Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT" -Directory -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($crt) {
+            Write-Host "Using the runtime from $($crt.FullName)"
+            Copy-Item "$($crt.FullName)\*.dll" engine -Force
+          } else {
+            Write-Host "No Visual Studio runtime folder found; trying System32 and Python instead"
+            foreach ($d in "$env:SystemRoot\System32", (Split-Path (Get-Command python).Source)) {
+              Get-ChildItem $d -File | Where-Object { $_.Name -match '^(vcruntime140|msvcp140|concrt140)' } | Copy-Item -Destination engine -Force
+            }
+          }
+          foreach ($n in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
+            if (-not (Test-Path "engine\$n")) { throw "The Microsoft C++ runtime file $n was not found on the build machine" }
+          }
           Get-ChildItem engine | Select-Object -First 30 Name
 
       - name: Build the app
