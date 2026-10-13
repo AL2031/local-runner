@@ -38,7 +38,9 @@ jobs:
           New-Item -ItemType Directory engine | Out-Null
           Copy-Item "$($exe.Directory.FullName)\*" engine -Recurse
           if (-not ((Test-Path engine\ggml-rpc-server.exe) -or (Test-Path engine\rpc-server.exe))) { throw "This llama.cpp build has no RPC server, so clustering would not work" }
-          Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile vc_redist.x64.exe
+          # Ship the Microsoft C++ runtime next to the engine so nothing has to be installed system-wide (no admin needed)
+          Get-ChildItem "$env:SystemRoot\System32" -Include vcruntime140*.dll, msvcp140*.dll, concrt140.dll -File | Copy-Item -Destination engine -Force
+          if (-not (Test-Path engine\vcruntime140.dll)) { throw "VC++ runtime DLLs were not found on the build machine" }
           Get-ChildItem engine | Select-Object -First 30 Name
 
       - name: Build the app
