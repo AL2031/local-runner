@@ -85,7 +85,7 @@ pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;paddi
 @media(max-width:900px){#side,#chatlist{display:none}}
 
 body{background:var(--bg)}
-button{border-radius:10px}button:hover{border-color:#2c3b66;background:#19254a}button.pri:hover{background:#4079ff}
+button{border-radius:10px}button:hover{border-color:#2c3b66;background:#19254a}button.pri:hover{background:#4079ff}button.danger{color:#ff8f8f;border-color:#4a2231}button.danger:hover{background:#34141f;border-color:#7a3347}
 input,select,textarea{background:#0a1124;border-radius:10px}
 #rail{width:98px;padding:14px 0;gap:8px;background:#0a1124}
 #rail button{width:84px;padding:12px 0 9px;border-radius:12px;font-size:12.5px;border:1px solid transparent}
@@ -176,8 +176,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:17px;height:17px;b
         <h3>Loaded models</h3><div id="loadedlist"></div>
         <h3>Server logs</h3><pre id="logs"></pre>
         <h3>Example request</h3><pre id="curl"></pre>
+        <h3>Uninstall</h3><div class="line"><div class="mute" id="unitxt" style="flex:1;max-width:560px"></div><button id="uninst" class="danger" hidden>Uninstall Local Runner</button></div>
       </div></section>
-      <section class="view" id="v-models"><div class="pane"><h2>My Models</h2><div id="mtable"></div></div></section>
+      <section class="view" id="v-models"><div class="pane"><h2>My Models</h2><div class="line" id="mbar"><span class="mute" id="mtot" style="flex:1"></span><button id="mpart" class="danger" hidden></button><button id="mdelsel" class="danger" disabled>Delete selected</button></div><div id="mtable"></div></div></section>
       <section class="view" id="v-cluster"><div class="pane">
         <h2>Cluster</h2>
         <div class="mute" style="max-width:640px">Link two or more computers on the same network to run models that are too big for one. Install Local Runner on each computer (same version), turn on <b>Share this computer</b> on the helpers, then add them here from the main computer.</div>
@@ -232,7 +233,7 @@ async function refresh(){
   const m=specs.loaded.find(m=>m.file===sel);
   $('#pickbtn').innerHTML=LOGO+`<span class="nm">${m?esc(m.name):'Select a model to load'}</span>`+CHEV;
   $('#mstat').innerHTML=m?`<i class="dot on"></i>Model loaded<span class="mute">· ${FIT[m.mode]}${m.remote?` · ${m.remote+1} computers`:''}</span>`:'<i class="dot"></i><span class="mute">No model loaded</span>';
-  $('#railtxt').textContent=specs.engine?'Running':'No engine';
+  $('#railtxt').textContent=specs.engine?'Running':'No engine';$('#uninst').hidden=!specs.uninstaller;$('#unitxt').innerHTML=specs.uninstaller?'Remove Local Runner from this computer. No admin password needed, and you choose whether to keep your downloaded models.':`This is the portable version. To remove it, close the app and delete its folder. Your models and settings are in <code>${esc(specs.dir)}</code>.`;
   $('#hw').textContent=`Local Runner · ${fmt(specs.ram)} RAM · ${specs.vram?fmt(specs.vram)+' VRAM':'No GPU'}${specs.cluster_nodes?` · +${fmt(specs.cluster_vram)} on ${specs.cluster_nodes} other computer${specs.cluster_nodes>1?'s':''}`:''} · ${fmt(specs.disk_free)} free disk`;
   if(!hist.length)emptyState();
   if(view==='models')renderModels();
@@ -370,6 +371,7 @@ $('#psave').onclick=async()=>{
 };
 $('#pdel').onclick=()=>{const p=presets[$('#preset').selectedIndex];if(p&&confirm(`Delete preset "${p.name}"?`)){presets=presets.filter(x=>x!==p);putPresets()}};
 
+$('#uninst').onclick=async()=>{if(!confirm('Uninstall Local Runner? The app will close and the uninstaller will open.'))return;try{await post('/api/uninstall',{confirm:true});document.body.innerHTML='<p style="padding:40px">Closing Local Runner… the uninstaller is opening.</p>'}catch(e){alert(e.message)}};
 /* configure panel */
 const DESC={Default:'Balanced and general purpose.',Concise:'Short, to-the-point answers.',Coder:'Precise code with brief notes.','Coding agent':'Careful edits for agentic coding.','Creative writer':'Imaginative, expressive writing.'};
 function fillR(el){el.style.background=`linear-gradient(90deg,var(--acc) ${(el.value-el.min)/(el.max-el.min)*100}%,#1f2a48 0)`}
@@ -386,18 +388,34 @@ $('#agbtn').onclick=()=>{const a=$('#agent');a.checked=!a.checked;a.onchange({ta
 $('#send').innerHTML=SENDI;cfgSync();
 
 /* my models */
-function renderModels(){
+let msel=new Set();
+async function renderModels(){
   const q=n=>(n.match(/\b(IQ\d\w*|Q\d(?:_[A-Z0-9]+)+|BF16|F16|F32)\b/i)||['—'])[0].toUpperCase();
   const pm=n=>(n.match(/(\d+(?:\.\d+)?)\s?B\b/i)||[])[0]||'—';
-  $('#mtable').innerHTML=models.length?`<table><tr><th>Model</th><th>Arch</th><th>Params</th><th>Quant</th><th>Size</th><th>Modified</th><th></th></tr>`+models.map((m,i)=>{
+  msel=new Set([...msel].filter(f=>models.some(m=>m.file===f)));
+  $('#mtable').innerHTML=models.length?`<table><tr><th style="width:30px"><input type="checkbox" id="mall" aria-label="Select all"></th><th>Model</th><th>Arch</th><th>Params</th><th>Quant</th><th>Size</th><th>Modified</th><th></th></tr>`+models.map((m,i)=>{
     const on=specs.loaded.some(l=>l.file===m.file);
-    return `<tr><td>${esc(m.name)}<div class="fit-${m.fit}">${FIT[m.fit]}</div></td><td>${esc(m.name.split(/[-_ .]/)[0])}</td><td>${pm(m.name)}</td><td>${q(m.name)}</td><td>${fmt(m.size)}</td><td>${new Date(m.mtime*1000).toLocaleDateString()}</td>
-    <td><button data-${on?'un':'ld'}="${i}" class="${on?'':'pri'}">${on?'Eject':'Load'}</button> <button data-rm="${i}">Delete</button></td></tr>`}).join('')+'</table>'
+    return `<tr><td><input type="checkbox" data-sel="${i}" ${msel.has(m.file)?'checked':''} aria-label="Select ${esc(m.name)}"></td><td>${esc(m.name)}<div class="fit-${m.fit}">${FIT[m.fit]}</div></td><td>${esc(m.name.split(/[-_ .]/)[0])}</td><td>${pm(m.name)}</td><td>${q(m.name)}</td><td>${fmt(m.size)}</td><td>${new Date(m.mtime*1000).toLocaleDateString()}</td>
+    <td><button data-${on?'un':'ld'}="${i}" class="${on?'':'pri'}">${on?'Eject':'Load'}</button> <button data-rm="${i}" class="danger">Delete</button></td></tr>`}).join('')+'</table>'
     :'<div class="mute">No models yet. Open Discover to download one.</div>';
+  const tot=models.reduce((n,m)=>n+m.size,0),chosen=models.filter(m=>msel.has(m.file));
+  $('#mtot').textContent=models.length?`${models.length} model${models.length>1?'s':''} · ${fmt(tot)} on disk · ${fmt(specs.disk_free)} free`:'';
+  $('#mdelsel').disabled=!chosen.length;$('#mdelsel').textContent=chosen.length?`Delete selected (${chosen.length} · ${fmt(chosen.reduce((n,m)=>n+m.size,0))})`:'Delete selected';
+  if($('#mall'))$('#mall').checked=models.length>0&&chosen.length===models.length;
   $$('[data-ld]').forEach(b=>b.onclick=()=>pickModel(models[b.dataset.ld].file));
   $$('[data-un]').forEach(b=>b.onclick=()=>unload(models[b.dataset.un].file));
-  $$('[data-rm]').forEach(b=>b.onclick=async()=>{const m=models[b.dataset.rm];if(!confirm(`Delete ${m.name}?`))return;await j('/api/models?file='+encodeURIComponent(m.file),{method:'DELETE'});refresh()});
+  $$('[data-sel]').forEach(b=>b.onchange=()=>{const f=models[b.dataset.sel].file;b.checked?msel.add(f):msel.delete(f);renderModels()});
+  if($('#mall'))$('#mall').onchange=e=>{msel=new Set(e.target.checked?models.map(m=>m.file):[]);renderModels()};
+  $$('[data-rm]').forEach(b=>b.onclick=()=>delModels([models[b.dataset.rm]]));
+  try{const p=await j('/api/partials');$('#mpart').hidden=!p.files;$('#mpart').textContent=`Clear unfinished downloads (${fmt(p.size)})`}catch(e){}
 }
+async function delModels(list){
+  if(!list.length||!confirm(list.length===1?`Delete ${list[0].name}? This frees ${fmt(list[0].size)}.`:`Delete ${list.length} models? This frees ${fmt(list.reduce((n,m)=>n+m.size,0))}.`))return;
+  for(const m of list){try{await j('/api/models?file='+encodeURIComponent(m.file),{method:'DELETE'});msel.delete(m.file)}catch(e){alert(`${m.name}: ${e.message}`)}}
+  await refresh();renderModels();
+}
+$('#mdelsel').onclick=()=>delModels(models.filter(m=>msel.has(m.file)));
+$('#mpart').onclick=async()=>{if(!confirm('Delete the unfinished downloads? They cannot be resumed afterwards.'))return;try{await j('/api/partials',{method:'DELETE'})}catch(e){alert(e.message)}await refresh();renderModels()};
 
 /* developer */
 async function renderDev(){
