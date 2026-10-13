@@ -131,7 +131,7 @@ def safe_path(rel):
 def specs():
     return {"ram": RAM, "vram": VRAM, "disk_free": shutil.disk_usage(MODELS).free,
             "cores": psutil.cpu_count(logical=False) or psutil.cpu_count(),
-            "cluster_vram": remote_free(), "cluster_nodes": len(online_workers()),
+            "cluster_vram": remote_free(), "uninstaller": uninstaller() is not None, "cluster_nodes": len(online_workers()),
             "engine": engine_path() is not None, "dir": str(MODELS),
             "loaded": [{"file": k, "name": Path(k).stem, "mode": v["mode"], "remote": len(v.get("rpc") or [])} for k, v in loaded.items()]}
 
@@ -148,12 +148,75 @@ def models():
     return out
 
 
+def prune(p):
+    """Remove folders left empty after a model is deleted (never the models folder itself)."""
+    d = p.parent
+    while d != MODELS and MODELS in d.parents:
+        try:
+            d.rmdir()
+        except OSError:
+            break
+        d = d.parent
+
+
 @app.delete("/api/models")
 def delete_model(file: str):
     p = safe_path(file)
     drop(file)
-    for q in group(p):
+    try:
+        for q in group(p):
+            q.unlink(missing_ok=True)
+            Path(str(q) + ".part").unlink(missing_ok=True)
+    except PermissionError:
+        raise HTTPException(409, "That file is in use. Eject the model and try again.")
+    prune(p)
+    return {"ok": True}
+
+
+def partial_files():
+    return [q for q in MODELS.rglob("*.part") if q.is_file()]
+
+
+@app.get("/api/partials")
+def get_partials():
+    f = partial_files()
+    return {"files": len(f), "size": sum(q.stat().st_size for q in f),
+            "active": any(j_["status"] == "running" for j_ in jobs.values())}
+
+
+@app.delete("/api/partials")
+def clear_partials():
+    if any(j_["status"] == "running" for j_ in jobs.values()):
+        raise HTTPException(409, "A download is still running. Wait for it to finish first.")
+    for q in partial_files():
         q.unlink(missing_ok=True)
+        prune(q)
+    return {"ok": True}
+
+
+class ConfirmReq(BaseModel):
+    confirm: bool
+
+
+def uninstaller():
+    exe = Path(sys.executable).parent / "unins000.exe"
+    return exe if getattr(sys, "frozen", False) and exe.exists() else None
+
+
+@app.post("/api/uninstall")
+def uninstall(r: ConfirmReq):
+    exe = uninstaller()
+    if not (r.confirm and exe):
+        raise HTTPException(400, "Uninstall from the Start menu or Windows Settings > Apps instead.")
+    subprocess.Popen([str(exe)], close_fds=True, creationflags=0x00000008 | 0x00000200)  # detached, so it outlives this app
+
+    def bye():
+        time.sleep(1)
+        for k in list(loaded):
+            drop(k)
+        worker_stop()
+        os._exit(0)
+    threading.Thread(target=bye, daemon=True).start()
     return {"ok": True}
 
 
