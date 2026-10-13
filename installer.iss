@@ -19,6 +19,7 @@ Source: "dist\LocalRunner\*"; DestDir: "{app}"; Flags: recursesubdirs
 [Icons]
 Name: "{group}\Local Runner"; Filename: "{app}\LocalRunner.exe"
 Name: "{autodesktop}\Local Runner"; Filename: "{app}\LocalRunner.exe"
+Name: "{group}\Uninstall Local Runner"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Local Runner sharing (TCP)"""; Flags: runhidden waituntilterminated; Check: IsAdminInstallMode
@@ -28,5 +29,23 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""L
 Filename: "{app}\LocalRunner.exe"; Description: "Launch Local Runner"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; Close the app and its engines first, otherwise Windows keeps their files locked
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM LocalRunner.exe /IM llama-server.exe /IM ggml-rpc-server.exe"; Flags: runhidden; RunOnceId: "KillApp"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Local Runner sharing (TCP)"""; Flags: runhidden; RunOnceId: "FwTcp"; Check: IsAdminInstallMode
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Local Runner sharing (UDP)"""; Flags: runhidden; RunOnceId: "FwUdp"; Check: IsAdminInstallMode
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Dir: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    Dir := ExpandConstant('{%USERPROFILE}\LocalRunner');
+    if DirExists(Dir) and (not UninstallSilent) then
+      if MsgBox('Also delete your downloaded models and settings?' + #13#10 + #13#10 + Dir + #13#10 + #13#10 +
+                'Choose No to keep them. They will be reused if you install Local Runner again.',
+                mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+        DelTree(Dir, True, True, True);
+  end;
+end;
