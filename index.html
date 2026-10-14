@@ -84,6 +84,7 @@ pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;paddi
 .start{max-width:620px;margin:40px auto;padding:0 24px}.start>b{font-size:18px}.pick{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.pick>div{flex:1}
 @media(max-width:900px){#side,#chatlist{display:none}}
 
+[hidden]{display:none!important}
 body{background:var(--bg)}
 button{border-radius:10px}button:hover{border-color:#2c3b66;background:#19254a}button.pri:hover{background:#4079ff}button.danger{color:#ff8f8f;border-color:#4a2231}button.danger:hover{background:#34141f;border-color:#7a3347}
 input,select,textarea{background:#0a1124;border-radius:10px}
@@ -106,12 +107,12 @@ input,select,textarea{background:#0a1124;border-radius:10px}
 .ci .x{font-size:18px;letter-spacing:1px}
 #bar{height:76px;justify-content:flex-start;gap:18px;padding:0 22px}
 #pickbtn{display:flex;align-items:center;gap:10px;width:330px;padding:11px 14px;background:#0a1124;text-align:left}#pickbtn .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
-#pick{top:66px;left:22px}#mstat{display:flex;align-items:center;color:var(--ink);flex:1;font-size:13.5px}#mstat .mute{margin-left:6px}
+#pick{top:66px;left:22px}#mstat{display:flex;align-items:center;color:var(--ink);flex:1;min-width:0;white-space:nowrap;font-size:13.5px}#mstat .mute{overflow:hidden;text-overflow:ellipsis;min-width:0}#mstat .mute{margin-left:6px}
 #msgs{padding:28px 0}.m.user .body{background:#12285a;border-radius:14px}.m .who{color:#7fb0ff}
 .empty{gap:8px}.empty svg{width:96px;height:96px;margin:0 auto 14px;stroke-width:1.1;color:#5b6a94}.empty b{font-size:21px;font-weight:600}
 #comp{max-width:880px;padding:0 24px 14px}.box{display:grid;grid-template-columns:1fr auto;border-radius:16px;padding:12px 14px;background:#0a1124;gap:6px 10px}
 .box textarea{grid-column:1/-1;padding:4px 2px}.tools{display:flex;gap:8px}.tools .ib{background:var(--raise);border-radius:10px;width:40px;height:40px}.tools .ib.on{background:#12285a}
-.box #send{width:46px;height:42px;border-radius:12px;grid-column:2;grid-row:2}.box #send:disabled{opacity:.5}
+.box #send{width:46px;height:42px;border-radius:12px;grid-column:2}.box #send:disabled{opacity:.5}
 #side{width:410px;padding:26px 22px;background:#0a1124}#side.hide{display:none}
 .tabs{display:flex;background:#0a1124;border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:18px}.tabs button{flex:1;border:1px solid transparent;background:none;color:var(--mute);padding:11px;font-weight:550}
 .tabs button.on{background:#10234f;border-color:#2557d6;color:#7fb0ff}
@@ -123,6 +124,8 @@ input,select,textarea{background:#0a1124;border-radius:10px}
 .p{margin:14px 0 16px}.p output{color:var(--ink)}
 input[type=range]{appearance:none;height:5px;border-radius:3px;background:#1f2a48;border:0;padding:0}
 input[type=range]::-webkit-slider-thumb{appearance:none;width:17px;height:17px;border-radius:50%;background:#7fb0ff;border:0}input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:#7fb0ff;border:0}
+#fchip{grid-column:1/-1;display:flex;align-items:center;gap:8px;background:#10234f;border:1px solid #2557d6;border-radius:10px;padding:5px 6px 5px 12px;font-size:13px;color:#9cc0ff;max-width:100%}#fchip svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;flex:none}#fchip #fname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#fchip .mute{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#fchip .ib{padding:3px}
+.note{text-align:center;color:var(--mute);font-size:12px;margin:4px 0 14px}
 #foot{background:transparent;border-top:0;height:24px}
 @media(max-width:1250px){#side{width:330px}#chatlist{width:250px}}@media(max-width:1000px){#side{display:none}}
 </style>
@@ -147,7 +150,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:17px;height:17px;b
         <div id="center">
           <div id="bar"><button id="pickbtn">Select a model to load</button><div id="pick" hidden></div><span id="mstat"></span><button class="ib" id="cfgbtn" title="Configure"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button></div>
           <div id="msgs"></div>
-          <div id="comp"><div class="box"><textarea id="in" rows="1" placeholder="Send a message to the model..."></textarea><div class="tools"><button class="ib" id="attach" title="Attach a text file"><svg viewBox="0 0 24 24"><path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg></button><button class="ib" id="agbtn" title="Agentic coding"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></button><input type="file" id="file" hidden></div><button class="pri" id="send" title="Send"></button></div><div id="stat"></div></div>
+          <div id="comp"><div class="box"><div id="fchip" hidden><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="fname"></span><span class="mute">The AI can read, edit and run commands here</span><button class="ib" id="fx" title="Stop giving access to this folder"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><textarea id="in" rows="1" placeholder="Send a message to the model..."></textarea><div class="tools"><button class="ib" id="attach" title="Attach a text file"><svg viewBox="0 0 24 24"><path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg></button><button class="ib" id="fbtn" title="Give the AI a project folder to work in"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button><input type="file" id="file" hidden></div><button class="pri" id="send" title="Send"></button></div><div id="stat"></div></div>
         </div>
         <aside id="side">
           <div class="ph"><h1>Configure</h1><button class="ib" id="cfgx" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
@@ -159,13 +162,13 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:17px;height:17px;b
             <button class="cd adv" id="advgo"><span>Advanced</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
           </div>
           <div id="tp-params" hidden>
-            <div class="cd"><b>Context length</b><select id="ctx"><option>2048</option><option selected>4096</option><option>8192</option><option>16384</option></select></div>
+            <div class="cd"><b>Context length</b><select id="ctx"><option value="0" selected>Max (model limit)</option><option>4096</option><option>8192</option><option>16384</option><option>32768</option><option>65536</option><option>131072</option></select><div class="mute" style="margin-top:8px">Max uses the model's full context window, and is lowered automatically only if it would not fit in memory. Changing this reloads the model.</div></div>
             <div class="cd"><b>Agent</b>
               <label class="r" style="align-items:center;gap:10px"><input type="checkbox" class="sw" id="agent"> Agentic coding</label>
               <div id="agentopts" hidden>
                 <div class="r"><input id="ws" placeholder="Project folder" style="flex:1;min-width:0"><button id="browse" style="flex:none">Browse</button></div>
                 <label class="p">Approvals<select id="appr"><option value="ask">Ask before edits and commands</option><option value="edits">Auto-approve edits, ask for commands</option><option value="all">Auto-approve everything</option></select></label>
-                <div class="mute">The agent can read, write and run commands inside this folder only. Use a context length of 8192 or more and a coding model.</div>
+                <div class="mute">The agent can read, write and run commands inside this folder only. It works best with a coding model.</div>
               </div>
             </div>
           </div>
@@ -210,12 +213,17 @@ const FIT={gpu:'Full GPU offload',ram:'CPU, fits in RAM',disk:'Streams from disk
 const H={'Content-Type':'application/json'};
 const ico=p=>`<svg viewBox="0 0 24 24">${p}</svg>`,LOGO=ico('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),CHEV=ico('<path d="M6 9l6 6 6-6"/>'),BUB=ico('<path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/>');
 const SENDI=ico('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>'),STOP='■',ROBOT='<svg viewBox="0 0 64 64"><rect x="16" y="22" width="32" height="26" rx="8"/><circle cx="26" cy="35" r="2.5"/><circle cx="38" cy="35" r="2.5"/><path d="M32 22v-7M10 28l-4-2M54 28l4-2M14 17l-3-3M50 17l3-3"/></svg>';
+const K=n=>n>=1024?Math.round(n/1024)+'K':n;
 const ago=t=>{const s=(Date.now()-t)/1e3;return s<60?'Just now':s<3600?Math.floor(s/60)+' min ago':s<86400?Math.floor(s/3600)+' hr ago':s<172800?'Yesterday':Math.floor(s/86400)+' days ago'};
 let csq='';
 const PARAMS=[['temperature','Temperature',0,2,.05,.7],['top_p','Top P',0,1,.05,.95],['max_tokens','Max Tokens',64,8192,64,1024],['repeat_penalty','Repeat Penalty',1,2,.05,1.1]];
 async function j(u,o){const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||d.error||'Request failed');return d}
 let picks=[],specs={loaded:[]},models=[],view='chat',sel='',presets=[],chats=[],cur,hist=[],busy=false,ctrl,poll,discInit=false;
-try{chats=JSON.parse(localStorage.chats||'[]')}catch(e){}
+async function loadChats(){
+  let old=[];try{old=JSON.parse(localStorage.chats||'[]')}catch(e){}
+  if(old.length){try{for(const c of old)await j('/api/chats/'+c.id,{method:'PUT',headers:H,body:JSON.stringify(c)});localStorage.removeItem('chats')}catch(e){}}  /* one-time move from browser storage to disk */
+  try{chats=await j('/api/chats')}catch(e){}renderChats();
+}
 
 /* navigation */
 function nav(v){
@@ -232,7 +240,8 @@ async function refresh(){
   if(!specs.loaded.some(m=>m.file===sel))sel=specs.loaded[0]?.file||'';
   const m=specs.loaded.find(m=>m.file===sel);
   $('#pickbtn').innerHTML=LOGO+`<span class="nm">${m?esc(m.name):'Select a model to load'}</span>`+CHEV;
-  $('#mstat').innerHTML=m?`<i class="dot on"></i>Model loaded<span class="mute">· ${FIT[m.mode]}${m.remote?` · ${m.remote+1} computers`:''}</span>`:'<i class="dot"></i><span class="mute">No model loaded</span>';
+  $('#mstat').innerHTML=m?`<i class="dot on"></i>Model loaded<span class="mute">· ${FIT[m.mode]}${m.remote?` · ${m.remote+1} computers`:''}${m.ctx?` · ${K(m.ctx)} context${m.ctx_max&&m.ctx<m.ctx_max?` (model max ${K(m.ctx_max)})`:''}`:''}</span>`:'<i class="dot"></i><span class="mute">No model loaded</span>';
+  $('#mstat').title=$('#mstat').textContent;
   $('#railtxt').textContent=specs.engine?'Running':'No engine';$('#uninst').hidden=!specs.uninstaller;$('#unitxt').innerHTML=specs.uninstaller?'Remove Local Runner from this computer. No admin password needed, and you choose whether to keep your downloaded models.':`This is the portable version. To remove it, close the app and delete its folder. Your models and settings are in <code>${esc(specs.dir)}</code>.`;
   $('#hw').textContent=`Local Runner · ${fmt(specs.ram)} RAM · ${specs.vram?fmt(specs.vram)+' VRAM':'No GPU'}${specs.cluster_nodes?` · +${fmt(specs.cluster_vram)} on ${specs.cluster_nodes} other computer${specs.cluster_nodes>1?'s':''}`:''} · ${fmt(specs.disk_free)} free disk`;
   if(!hist.length)emptyState();
@@ -301,18 +310,19 @@ $('#msgs').onclick=e=>{
   if(b.dataset.ap){const ok=b.dataset.ok==='1';fetch('/api/agent/approve',{method:'POST',headers:H,body:JSON.stringify({id:b.dataset.ap,ok})});b.parentElement.innerHTML=`<span class="mute">${ok?'Running…':'Denied'}</span>`}
 };
 $('#agent').onchange=e=>{$('#agentopts').hidden=!e.target.checked;$('#in').placeholder=e.target.checked?'Describe a coding task for the agent':'Send a message to the model'};
-$('#browse').onclick=async()=>{const f=window.pywebview?.api?await pywebview.api.pick_folder():prompt('Project folder path');if(f)$('#ws').value=f};
+$('#browse').onclick=async()=>{const f=window.pywebview?.api?await pywebview.api.pick_folder():prompt('Project folder path');if(f){$('#ws').value=f;folderSync()}};
 function newChat(){cur={id:Date.now(),title:'New chat',messages:[]};hist=cur.messages;emptyState();$('#stat').textContent='';renderChats()}
 function saveChat(){
   if(!hist.length)return;
-  if(!chats.includes(cur)){cur.title=hist[0].content.slice(0,40);chats.unshift(cur)}cur.t=Date.now();
-  try{localStorage.chats=JSON.stringify(chats)}catch(e){}renderChats();
+  if(!chats.includes(cur)){cur.title=hist[0].content.slice(0,40);chats.unshift(cur)}cur.t=Date.now();chats.sort((a,b)=>(b.t||b.id)-(a.t||a.id));
+  renderChats();
+  j('/api/chats/'+cur.id,{method:'PUT',headers:H,body:JSON.stringify({id:cur.id,title:cur.title,t:cur.t,messages:cur.messages,summary:cur.summary||'',covered:cur.covered||0})}).catch(()=>{});
 }
 function renderChats(){
   const q=csq,row=(c,i)=>`<div class="ci${c===cur?' on':''}">${BUB}<button data-o="${i}"><b>${esc(c.title)}</b><small>${ago(c.t||c.id)}</small></button><button class="x" data-x="${i}" aria-label="Delete chat" title="Delete chat">⋯</button></div>`;
   $('#cl').innerHTML=(chats.includes(cur)||q?'':`<div class="ci on">${BUB}<button><b>New conversation</b><small>Just now</small></button></div>`)+chats.map((c,i)=>[c,i]).filter(([c])=>c.title.toLowerCase().includes(q)).map(([c,i])=>row(c,i)).join('')||(q?'<div class="mute pad">No chats match.</div>':'');
-  $$('[data-o]').forEach(b=>b.onclick=()=>{cur=chats[b.dataset.o];hist=cur.messages;$('#msgs').innerHTML='';hist.forEach(m=>add(m.role==='user'?'user':'bot',m.content));renderChats()});
-  $$('[data-x]').forEach(b=>b.onclick=()=>{if(!confirm('Delete this chat?'))return;const c=chats.splice(b.dataset.x,1)[0];try{localStorage.chats=JSON.stringify(chats)}catch(e){}c===cur?newChat():renderChats()});
+  $$('[data-o]').forEach(b=>b.onclick=async()=>{const c=chats[b.dataset.o];if(!c.messages){try{Object.assign(c,await j('/api/chats/'+c.id))}catch(e){return alert(e.message)}}cur=c;hist=cur.messages;$('#msgs').innerHTML='';hist.forEach(m=>add(m.role==='user'?'user':'bot',m.content));renderChats()});
+  $$('[data-x]').forEach(b=>b.onclick=()=>{if(!confirm('Delete this chat?'))return;const c=chats.splice(b.dataset.x,1)[0];fetch('/api/chats/'+c.id,{method:'DELETE'});c===cur?newChat():renderChats()});
 }
 async function send(forced){
   if(busy){ctrl.abort();return}
@@ -323,7 +333,7 @@ async function send(forced){
   $('#in').value='';$('#in').style.height='auto';busy=true;$('#send').innerHTML=STOP;
   hist.push({role:'user',content:text});add('user',text);
   let out=add('bot','…'),seg='',n=0;ctrl=new AbortController();const t0=Date.now();
-  const req={model:sel,system:$('#sys').value,n_ctx:+$('#ctx').value,messages:hist};
+  const req={model:sel,system:$('#sys').value,n_ctx:+$('#ctx').value,messages:hist,summary:cur.summary||'',covered:cur.covered||0};
   PARAMS.forEach(([k])=>req[k]=+$('#p_'+k).value);
   if(agent){req.workspace=$('#ws').value.trim();req.approval=$('#appr').value}
   try{
@@ -338,6 +348,7 @@ async function send(forced){
         if(d.t){seg+=d.t;n++;setBody(out,seg);$('#msgs').scrollTop=1e9}
         if(d.tool){const pre=seg.replace(/```[\s\S]*$/,'').trim();pre?setBody(out,pre):out.remove();toolCard(d.tool);out=add('bot','');out.querySelector('.who').remove();seg=''}
         if(d.result){const c=$('#tc-'+d.result.id);c.querySelector('.tr').textContent=d.result.text;c.querySelector('.ta').innerHTML=''}
+        if(d.compacted){cur.summary=d.compacted.summary;cur.covered=d.compacted.covered;out.insertAdjacentHTML('beforebegin','<div class="note">Earlier messages were summarized to fit the model\'s context window. The full conversation is still saved.</div>')}
         if(d.error){out.classList.add('err');setBody(out,d.error)}
       }
     }
@@ -383,9 +394,16 @@ $('#sys').oninput=cfgSync;$('#sreset').onclick=applyPreset;
 $('#cs').oninput=e=>{csq=e.target.value.toLowerCase();renderChats()};$('#csb').onclick=()=>$('#cs').focus();
 $('#attach').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{$('#in').value+=(($('#in').value?'\n\n':'')+`File: ${f.name}\n\`\`\`\n${String(r.result).slice(0,60000)}\n\`\`\``);$('#in').dispatchEvent(new Event('input'));$('#in').focus()};r.readAsText(f);e.target.value=''};
-{const ao=$('#agent').onchange;$('#agent').onchange=e=>{ao(e);$('#agbtn').classList.toggle('on',e.target.checked)}}
-$('#agbtn').onclick=()=>{const a=$('#agent');a.checked=!a.checked;a.onchange({target:a});if(a.checked&&!$('#ws').value.trim()){$('#side').classList.remove('hide');tab('params')}};
+{const ao=$('#agent').onchange;$('#agent').onchange=e=>{ao(e);folderSync()}}
 $('#send').innerHTML=SENDI;cfgSync();
+
+/* project folder the AI may work in */
+const base=p=>p.replace(/[\\/]+$/,'').split(/[\\/]/).pop()||p;
+function folderSync(){const f=$('#ws').value.trim(),on=$('#agent').checked&&!!f;$('#fchip').hidden=!on;$('#fname').textContent=on?base(f):'';$('#fname').title=f;$('#fbtn').classList.toggle('on',on)}
+async function pickFolder(){const f=window.pywebview?.api?await pywebview.api.pick_folder():prompt('Full path of the project folder');if(!f)return;$('#ws').value=f;const a=$('#agent');if(!a.checked){a.checked=true;a.onchange({target:a})}folderSync()}
+$('#fbtn').onclick=pickFolder;$('#ws').oninput=folderSync;
+$('#fx').onclick=()=>{const a=$('#agent');a.checked=false;a.onchange({target:a});folderSync()};
+$('#ctx').onchange=()=>{if(sel&&specs.loaded.some(l=>l.file===sel))pickModel(sel)};
 
 /* my models */
 let msel=new Set();
@@ -490,7 +508,7 @@ function watch(){
   },1000);
 }
 
-(async()=>{picks=await j('/api/picks').catch(()=>[]);await refresh();await loadPresets();newChat();})();
+(async()=>{picks=await j('/api/picks').catch(()=>[]);await refresh();await loadPresets();newChat();await loadChats();})();
 </script>
 </body>
 </html>
