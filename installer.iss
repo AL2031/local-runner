@@ -1,6 +1,11 @@
 [Setup]
 AppName=Local Runner
 AppVersion=1.2.0
+AppPublisher=Local Runner
+VersionInfoVersion=1.2.0.0
+VersionInfoCompany=Local Runner
+VersionInfoDescription=Local Runner Setup
+VersionInfoProductName=Local Runner
 DefaultDirName={autopf}\Local Runner
 DefaultGroupName=Local Runner
 ; Per-user install (no admin password). The user can still choose 'all users' in the dialog if they are an admin.
