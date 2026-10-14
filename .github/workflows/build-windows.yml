@@ -26,7 +26,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt
+          # Compile PyInstaller's own launcher (the "bootloader") from source. The ready-made one is shared by thousands
+          # of programs and antivirus tools keep its fingerprint on file, which causes false alarms.
+          # If compiling fails here, fall back to the normal ready-made one so the build still works.
+          pip install pyinstaller --no-binary pyinstaller
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Could not compile the launcher on this machine; using the standard one"
+            pip install pyinstaller
+          }
+          python -c "import PyInstaller; print('PyInstaller', PyInstaller.__version__)"
 
       - name: Download the llama.cpp engine (Vulkan build, works on any GPU and falls back to CPU)
         env:
@@ -75,6 +84,10 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Show checksums (needed when reporting a false alarm to an antivirus vendor)
+        run: |
+          Get-FileHash installer\LocalRunner-Setup.exe, LocalRunner-Windows.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v4
         with:
