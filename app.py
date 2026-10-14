@@ -4,7 +4,7 @@
 Models are memory-mapped, so the OS pages weights in from disk as needed.
 If a model is bigger than your RAM it still runs (slowly) as long as it fits on disk.
 """
-import atexit, gc, json, os, socket, sys, tempfile, uuid, platform, re, shutil, subprocess, threading, time, webbrowser
+import atexit, gc, gzip, json, os, socket, struct, sys, tempfile, uuid, platform, re, shutil, subprocess, threading, time, webbrowser
 from pathlib import Path
 from typing import Optional, Union
 
@@ -83,7 +83,7 @@ def gpu_memory():
     if exe:  # works for NVIDIA, AMD and Intel GPUs
         try:
             r = subprocess.run([str(exe), "--list-devices"], capture_output=True, text=True, timeout=20,
-                               cwd=str(exe.parent), creationflags=NO_WINDOW)
+                               cwd=str(exe.parent), creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
             sizes = [int(m) for m in re.findall(r"\((\d+) MiB,", r.stdout + r.stderr)]
             if sizes:
                 return max(sizes) * 1024 ** 2
@@ -91,7 +91,7 @@ def gpu_memory():
             pass
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW).stdout
+                             capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL).stdout
         return int(max(float(x) for x in out.split()) * 1024 ** 2)
     except Exception:
         return 0
@@ -133,7 +133,7 @@ def specs():
             "cores": psutil.cpu_count(logical=False) or psutil.cpu_count(),
             "cluster_vram": remote_free(), "uninstaller": uninstaller() is not None, "cluster_nodes": len(online_workers()),
             "engine": engine_path() is not None, "dir": str(MODELS),
-            "loaded": [{"file": k, "name": Path(k).stem, "mode": v["mode"], "remote": len(v.get("rpc") or [])} for k, v in loaded.items()]}
+            "loaded": [{"file": k, "name": Path(k).stem, "mode": v["mode"], "remote": len(v.get("rpc") or []), "ctx": v.get("ctx"), "ctx_max": v.get("ctx_max")} for k, v in loaded.items()]}
 
 
 @app.get("/api/models")
@@ -144,7 +144,7 @@ def models():
         if m and m.group(1) != "00001":
             continue
         size = sum(q.stat().st_size for q in group(p))
-        out.append({"file": p.relative_to(MODELS).as_posix(), "name": p.stem, "size": size, "fit": fit(size), "mtime": p.stat().st_mtime})
+        out.append({"file": p.relative_to(MODELS).as_posix(), "name": p.stem, "size": size, "fit": fit(size), "mtime": p.stat().st_mtime, "ctx_max": model_limits(p)["ctx"]})
     return out
 
 
@@ -398,7 +398,7 @@ def probe(addr):
         return {"online": False, "error": "Engine not found"}
     try:
         r = subprocess.run([str(exe), "--rpc", addr, "--list-devices"], capture_output=True, text=True,
-                           timeout=25, cwd=str(exe.parent), creationflags=NO_WINDOW)
+                           timeout=25, cwd=str(exe.parent), creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
         out = r.stdout + r.stderr
     except subprocess.TimeoutExpired:
         return {"online": False, "error": "No answer. It may be off, blocked by a firewall, or busy with another computer."}
@@ -467,7 +467,7 @@ def worker_start(port):
     worker_stop()
     log = tempfile.TemporaryFile()
     proc = subprocess.Popen([str(exe), "-H", "0.0.0.0", "-p", str(port), "-c"], stdout=log, stderr=subprocess.STDOUT,
-                            cwd=str(exe.parent), creationflags=NO_WINDOW)
+                            cwd=str(exe.parent), creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
     time.sleep(1.5)
     if proc.poll() is not None:
         log.seek(0)
@@ -619,7 +619,7 @@ def start_engine(exe, path, ctx, ngl, mode, rpc=()):
     if mode == "disk":
         cmd.append("--no-warmup")  # don't read the whole file up front
     log = tempfile.TemporaryFile()
-    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=str(exe.parent), creationflags=NO_WINDOW)
+    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=str(exe.parent), creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
     t0 = time.time()
     while time.time() - t0 < 900:
         if proc.poll() is not None:
@@ -651,7 +651,78 @@ def chat_once(e, **kw):
     return JSONResponse(r.json(), status_code=r.status_code)
 
 
-def get_llm(file, n_ctx=4096):
+_GGUF_FMT = {0: "<B", 1: "<b", 2: "<H", 3: "<h", 4: "<I", 5: "<i", 6: "<f", 7: "<?", 10: "<Q", 11: "<q", 12: "<d"}
+
+
+def _gguf_value(f, t):
+    if t in _GGUF_FMT:
+        return struct.unpack(_GGUF_FMT[t], f.read(struct.calcsize(_GGUF_FMT[t])))[0]
+    if t == 8:
+        n = struct.unpack("<Q", f.read(8))[0]
+        if n > 1 << 24:
+            raise ValueError("corrupt header")
+        return f.read(n).decode("utf-8", "replace")
+    if t == 9:
+        it, n = struct.unpack("<IQ", f.read(12))
+        items = [_gguf_value(f, it) for _ in range(n)]
+        return items if n <= 1024 else None
+    raise ValueError(t)
+
+
+_meta_cache = {}
+
+
+def model_limits(path):
+    """Read what a model supports from its GGUF header: trained context length and KV-cache bytes per token."""
+    key = (str(path), path.stat().st_mtime)
+    if key in _meta_cache:
+        return _meta_cache[key]
+    out = {"ctx": None, "kv": None}
+    try:
+        with open(path, "rb") as f:
+            if f.read(4) == b"GGUF":
+                ver, _, nkv = struct.unpack("<IQQ", f.read(20))
+                meta = {}
+                for _ in range(nkv if ver >= 2 else 0):
+                    klen = struct.unpack("<Q", f.read(8))[0]
+                    if klen > 4096:
+                        raise ValueError("corrupt header")
+                    k = f.read(klen).decode("utf-8", "replace")
+                    t = struct.unpack("<I", f.read(4))[0]
+                    if k.startswith("tokenizer."):  # the settings we need come before the (huge) vocabulary
+                        break
+                    meta[k] = _gguf_value(f, t)
+                a = meta.get("general.architecture")
+                g = lambda n, d=None: meta.get(f"{a}.{n}", d)
+                layers, emb, heads = g("block_count"), g("embedding_length"), g("attention.head_count")
+                kvh = g("attention.head_count_kv", heads)
+                hmax = max(heads) if isinstance(heads, list) else heads
+                kd = g("attention.key_length") or (emb // hmax if emb and hmax else None)
+                vd = g("attention.value_length") or kd
+                if g("context_length"):
+                    out["ctx"] = int(g("context_length"))
+                if layers and kvh and kd:
+                    iv = g("full_attention_interval")  # hybrid models keep a KV cache on only some layers
+                    kv_layers = -(-layers // int(iv)) if iv else layers
+                    total_heads = sum(kvh) if isinstance(kvh, list) else kvh * kv_layers
+                    out["kv"] = int(total_heads * (kd + vd) * 2)  # 2 bytes each (f16)
+    except (OSError, ValueError, struct.error, TypeError, ZeroDivisionError, OverflowError, MemoryError):
+        pass
+    _meta_cache[key] = out
+    return out
+
+
+def auto_ctx(path, size, mode, cap):
+    """Largest context the model supports that also fits in memory (never below 2048)."""
+    lim = model_limits(path)
+    top = lim["ctx"] or 8192
+    if not lim["kv"]:
+        return min(top, 32768)
+    spare = {"gpu": cap * 0.92 - size, "ram": RAM * 0.8 - size, "disk": RAM * 0.45}[mode] - 0.6e9
+    return int(max(2048, min(top, spare // lim["kv"])) // 512 * 512) if spare > 0 else 2048
+
+
+def get_llm(file, n_ctx=0):
     """Return a running model, starting its engine (and evicting the oldest ones) if needed."""
     exe = engine_path()
     if not exe:
@@ -679,28 +750,39 @@ def get_llm(file, n_ctx=4096):
             drop(k)  # GPU memory is shared: GPU models load one at a time
         while loaded and (len(loaded) >= MAX_LOADED or sum(m["size"] for m in loaded.values()) + size > RAM * 0.7):
             drop(min(loaded, key=lambda k: loaded[k]["t"]))
-        err = ""
-        for ngl, rp, mode in attempts:  # if the GPU runs out of memory, retry with fewer layers on it
-            try:
-                proc, port = start_engine(exe, path, n_ctx if mode != "disk" else min(n_ctx, 2048), ngl, mode, rp)
+        err, done, auto = "", False, n_ctx <= 0  # n_ctx 0 = use the model's maximum context
+        for div in ((1, 2, 4) if auto else (1,)):  # if memory runs out, retry with fewer layers on the GPU, then a shorter context
+            for ngl, rp, mode in (attempts if div == 1 else attempts[:2]):
+                cap_m = VRAM + (remote_free() if rp else 0)
+                ctx = max(2048, auto_ctx(path, size, mode, cap_m) // div) if auto else (n_ctx if mode != "disk" else min(n_ctx, 2048))
+                try:
+                    proc, port = start_engine(exe, path, ctx, ngl, mode, rp)
+                    done = True
+                    break
+                except RuntimeError as ex:
+                    err = str(ex)
+            if done:
                 break
-            except RuntimeError as ex:
-                err = str(ex)
-        else:
+        if not done:
             raise HTTPException(500, f"Could not load model: {err}")
         loaded[file] = {"proc": proc, "port": port, "mode": mode, "size": size, "gpu": bool(ngl), "rpc": rp,
+                        "ctx": ctx, "ctx_max": model_limits(path)["ctx"] or ctx, "req_ctx": n_ctx,
                         "t": time.time(), "lock": threading.Lock()}
         return loaded[file]
 
 
 class LoadReq(BaseModel):
     file: str
-    n_ctx: int = 4096
+    n_ctx: int = 0  # 0 = the model's maximum context
 
 
 @app.post("/api/load")
 def load(r: LoadReq):
-    return {"ok": True, "mode": get_llm(r.file, r.n_ctx)["mode"]}
+    e = loaded.get(r.file)
+    if e and e.get("req_ctx") != r.n_ctx:  # the context length was changed: restart the engine with the new one
+        drop(r.file)
+    e = get_llm(r.file, r.n_ctx)
+    return {"ok": True, "mode": e["mode"], "ctx": e["ctx"]}
 
 
 @app.post("/api/unload")
@@ -731,11 +813,83 @@ class ChatReq(BaseModel):
     model: str
     messages: list
     system: str = ""
-    n_ctx: int = 4096
+    n_ctx: int = 0
     temperature: float = 0.7
     top_p: float = 0.95
     max_tokens: int = 1024
     repeat_penalty: float = 1.1
+    summary: str = ""  # briefing that stands in for the first `covered` messages (kept by the app)
+    covered: int = 0
+
+
+def est_tokens(text):
+    """Cheap token estimate that errs on the high side (about 3 characters per token, 1 per non-ASCII character)."""
+    if not isinstance(text, str):
+        text = json.dumps(text)
+    wide = sum(ord(c) > 127 for c in text)
+    return (len(text) - wide) // 3 + wide + 6
+
+
+def msgs_tokens(msgs):
+    return sum(est_tokens(m.get("content", "")) for m in msgs)
+
+
+def summarize(e, prev, chunk):
+    """Ask the loaded model to condense old messages into a short briefing."""
+    text = "\n\n".join(f"{m.get('role', 'user').upper()}: {m.get('content', '')}" for m in chunk)
+    cap = max(2000, int(e["ctx"] * 0.5) * 3)  # characters: keep this request itself inside the context window
+    if len(text) > cap:
+        text = text[:cap // 2] + "\n[...]\n" + text[-cap // 2:]
+    prompt = ("Condense the conversation below into a short briefing (under 300 words) that lets an assistant continue it "
+              "seamlessly. Keep names, decisions, facts, file names, important code and open tasks. Add nothing new.\n\n"
+              + (f"Briefing so far:\n{prev}\n\n" if prev else "") + f"New part of the conversation:\n{text}")
+    r = httpx.post(f"http://127.0.0.1:{e['port']}/v1/chat/completions", timeout=None,
+                   json={"messages": [{"role": "user", "content": prompt}], "max_tokens": 450, "temperature": 0.2, "stream": False})
+    return r.json()["choices"][0]["message"]["content"].strip()
+
+
+def compact(e, system, msgs, max_tokens, state):
+    """Fit system + messages into the model's context. Old messages are folded into a running summary.
+    state = {"summary", "covered"}: how many leading messages the summary already stands in for.
+    Returns (system text, messages to send, new state or None if nothing changed)."""
+    budget = int(e["ctx"] * 0.85) - max_tokens  # room for the reply, plus a margin for estimate error
+    summary = state.get("summary", "") or ""
+    covered = max(0, min(int(state.get("covered", 0) or 0), max(len(msgs) - 1, 0)))
+    changed = False
+
+    def parts():
+        sy = system + (("\n\n" if system else "") + "Summary of the earlier conversation:\n" + summary if summary else "")
+        return sy, msgs[covered:]
+
+    limit = budget
+    while True:
+        sy, tail = parts()
+        total = est_tokens(sy) + msgs_tokens(tail)
+        if total <= limit or len(tail) <= 1:
+            break
+        limit = budget // 2  # once compressing, go down to half the budget so this does not repeat on every turn
+        need = total - limit
+        take, used = 1, est_tokens(tail[0].get("content", ""))
+        while take < len(tail) - 1 and used < min(need, int(e["ctx"] * 0.4)):  # one summarising request per chunk
+            used += est_tokens(tail[take].get("content", ""))
+            take += 1
+        while take < len(tail) - 1 and tail[take].get("role") != "user":  # what we keep should start with a user turn
+            take += 1
+        try:
+            summary = summarize(e, summary, tail[:take])
+        except Exception:
+            summary = (summary + "\n(Some older messages were dropped to fit the context window.)").strip()
+        covered += take
+        changed = True
+    sy, tail = parts()
+    room = budget - est_tokens(sy) - msgs_tokens(tail[:-1])
+    if tail and room > 200 and est_tokens(tail[-1].get("content", "")) > room:  # one huge message, e.g. a pasted file
+        last, c = dict(tail[-1]), tail[-1].get("content", "")
+        if isinstance(c, str):
+            keep = max(600, (room - 60) * 3)
+            last["content"] = c[:keep // 2] + "\n[... middle removed to fit the context window ...]\n" + c[-keep // 2:]
+            tail = tail[:-1] + [last]
+    return sy, tail, ({"summary": summary, "covered": covered} if changed else None)
 
 
 @app.post("/api/chat")
@@ -743,12 +897,15 @@ def chat(r: ChatReq):
     if not r.model:
         raise HTTPException(400, "Load a model first")
     e = get_llm(r.model, r.n_ctx)
-    msgs = ([{"role": "system", "content": r.system}] if r.system else []) + r.messages
 
     def gen():
         start, n = time.time(), 0
         with e["lock"]:
             try:
+                sy, tail, ns = compact(e, r.system, r.messages, r.max_tokens, {"summary": r.summary, "covered": r.covered})
+                if ns:
+                    yield sse({"compacted": ns})
+                msgs = ([{"role": "system", "content": sy}] if sy else []) + tail
                 for ch in chat_stream(e, 
                         messages=msgs, temperature=r.temperature, top_p=r.top_p,
                         max_tokens=r.max_tokens, repeat_penalty=r.repeat_penalty, stream=True):
@@ -869,7 +1026,7 @@ def run_tool(root, name, a):
         return f"Wrote {len(a['content'])} characters to {a['path']}"
     if name == "run_command":
         r = subprocess.run(a["command"], shell=True, cwd=root, capture_output=True, text=True, timeout=60,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), stdin=subprocess.DEVNULL)
         return f"exit code {r.returncode}\n{(r.stdout + r.stderr)[-4000:]}"
     return f"Unknown tool: {name}"
 
@@ -900,15 +1057,22 @@ def agent(r: AgentReq):
     if not root.is_dir():
         raise HTTPException(400, "Choose a project folder first.")
     e = get_llm(r.model, r.n_ctx)
-    msgs = [{"role": "system", "content": TOOLS_PROMPT + ("\n\n" + r.system if r.system else "")}] + r.messages
+    base = TOOLS_PROMPT + ("\n\n" + r.system if r.system else "")
+    msgs, st, n_client = list(r.messages), {"summary": r.summary, "covered": r.covered}, len(r.messages)
 
     def gen():
+        nonlocal st
         with e["lock"]:
             for _ in range(r.max_steps):
                 text = ""
                 try:
+                    sy, tail, ns = compact(e, base, msgs, r.max_tokens, st)
+                    if ns:
+                        st = ns
+                        if ns["covered"] <= n_client:  # only tell the app when the summary covers messages it knows about
+                            yield sse({"compacted": ns})
                     for ch in chat_stream(e, 
-                            messages=msgs, temperature=r.temperature, top_p=r.top_p,
+                            messages=[{"role": "system", "content": sy}] + tail, temperature=r.temperature, top_p=r.top_p,
                             max_tokens=r.max_tokens, repeat_penalty=r.repeat_penalty, stream=True):
                         t = ch["choices"][0]["delta"].get("content")
                         if t:
@@ -943,10 +1107,97 @@ def agent(r: AgentReq):
                 else:
                     res = "The user denied this action."
                 yield sse({"result": {"id": tid, "text": res[:3000]}})
+                if len(res) > 20000:
+                    res = res[:12000] + "\n[... output truncated ...]\n" + res[-6000:]
                 msgs.append({"role": "user", "content": f"Tool result:\n{res}"})
             yield sse({"done": True})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# ---------- conversations on disk (one file each; gzip once a chat gets large) ----------
+CHATS = MODELS.parent / "chats"
+CHAT_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+chat_meta = {}
+
+
+def chat_files(cid):
+    if not CHAT_ID.match(cid):
+        raise HTTPException(400, "Bad chat id")
+    return CHATS / f"{cid}.json", CHATS / f"{cid}.json.gz"
+
+
+def read_chat(cid):
+    plain, gz = chat_files(cid)
+    try:
+        if gz.exists():
+            return json.loads(gzip.decompress(gz.read_bytes()))
+        if plain.exists():
+            return json.loads(plain.read_text("utf-8"))
+    except (OSError, ValueError, EOFError):
+        pass
+    return None
+
+
+def meta_of(c):
+    return {"id": c["id"], "title": c.get("title", ""), "t": c.get("t", 0), "n": len(c.get("messages", []))}
+
+
+class ChatDoc(BaseModel):
+    id: Union[int, str]
+    title: str = ""
+    t: float = 0
+    messages: list = []
+    summary: str = ""
+    covered: int = 0
+
+
+@app.get("/api/chats")
+def list_chats():
+    CHATS.mkdir(parents=True, exist_ok=True)
+    out = []
+    for f in CHATS.glob("*.json*"):
+        cid = f.name.split(".")[0]
+        if cid not in chat_meta and CHAT_ID.match(cid):
+            c = read_chat(cid)
+            if c:
+                chat_meta[cid] = meta_of(c)
+        if cid in chat_meta and chat_meta[cid] not in out:
+            out.append(chat_meta[cid])
+    return sorted(out, key=lambda m: -m["t"])
+
+
+@app.get("/api/chats/{cid}")
+def get_chat(cid: str):
+    c = read_chat(cid)
+    if c is None:
+        raise HTTPException(404, "Chat not found")
+    return c
+
+
+@app.put("/api/chats/{cid}")
+def put_chat(cid: str, doc: ChatDoc):
+    plain, gz = chat_files(cid)
+    if str(doc.id) != cid:
+        raise HTTPException(400, "Chat id mismatch")
+    CHATS.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(doc.model_dump(), ensure_ascii=False).encode("utf-8")
+    big = len(data) > 256_000
+    dest, other = (gz, plain) if big else (plain, gz)
+    tmp = dest.with_name(dest.name + ".tmp")
+    tmp.write_bytes(gzip.compress(data, 6) if big else data)
+    os.replace(tmp, dest)  # a crash mid-save never leaves a half-written chat
+    other.unlink(missing_ok=True)
+    chat_meta[cid] = meta_of(doc.model_dump())
+    return {"ok": True, "compressed": big, "bytes": dest.stat().st_size}
+
+
+@app.delete("/api/chats/{cid}")
+def delete_chat(cid: str):
+    for f in chat_files(cid):
+        f.unlink(missing_ok=True)
+    chat_meta.pop(cid, None)
+    return {"ok": True}
 
 
 @app.get("/")
@@ -958,13 +1209,48 @@ if __name__ == "__main__":
     import socket
     import uvicorn
 
+    import logging
+    import logging.handlers
+    import traceback
+    import urllib.request
+
+    # Log to a file: an installed app has no console, so this is the only way to see what went wrong.
+    MODELS.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(message)s", handlers=[
+        logging.handlers.RotatingFileHandler(MODELS.parent / "app.log", maxBytes=1_000_000, backupCount=1, encoding="utf-8")])
+    sys.excepthook = lambda *e: logging.error("Unhandled error:\n%s", "".join(traceback.format_exception(*e)))
+    threading.excepthook = lambda a: logging.error("Error in a background thread:\n%s", "".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
+
     cluster_boot()
-    host, port = os.environ.get("LOCALRUNNER_HOST", "127.0.0.1"), int(os.environ.get("LOCALRUNNER_PORT", 1234))
-    srv = threading.Thread(target=lambda: uvicorn.run(app, host=host, port=port, log_level="warning", log_config=None), daemon=True)
+    host = os.environ.get("LOCALRUNNER_HOST", "127.0.0.1")
+    port = int(os.environ.get("LOCALRUNNER_PORT", 1234))
+    try:  # port 1234 is also used by LM Studio and by a second copy of this app: fall back to a free port
+        with socket.socket() as probe_sock:
+            if os.name != "nt":  # same setting the server itself uses, so a port in its short cool-down still counts as free
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe_sock.bind((host, port))
+    except OSError:
+        port = free_port()
+    logging.warning("Local Runner starting on %s:%s", host, port)
+
+    def serve():
+        import asyncio
+        if sys.platform == "win32":
+            # The default Windows event loop can close its listening socket after one failed accept,
+            # which leaves the window showing "127.0.0.1 refused to connect". The selector loop does not.
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        for _ in range(50):
+            try:
+                uvicorn.run(app, host=host, port=port, log_level="warning", log_config=None)
+            except BaseException:
+                logging.error("Server stopped unexpectedly:\n%s", traceback.format_exc())
+            time.sleep(1)  # if the server ever stops, start it again so the window keeps working
+
+    srv = threading.Thread(target=serve, daemon=True)
     srv.start()
-    for _ in range(100):  # wait for the engine to come up
+    for _ in range(100):  # wait for the server to answer a real request (a bare connect-and-hang-up can upset it)
         try:
-            socket.create_connection(("127.0.0.1", port), 0.2).close()
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/specs", timeout=2).close()
             break
         except OSError:
             time.sleep(0.1)
@@ -980,4 +1266,7 @@ if __name__ == "__main__":
                 return r[0] if r else ""
 
         win = webview.create_window("Local Runner", f"http://127.0.0.1:{port}", width=1320, height=860, js_api=Api())
-        webview.start()
+        try:  # by default the window forgets everything on exit; keep its storage in the LocalRunner folder
+            webview.start(private_mode=False, storage_path=str(MODELS.parent / "webview"))
+        except TypeError:
+            webview.start()
